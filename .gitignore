@@ -1,0 +1,39 @@
+# Environment / secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Local database files
+*.sqlite3
+*.db
+
+# Logs
+*.log
+logs/
+
+# Temporary downloads / cache
+tmp/
+cache/
+*.tmp
+
+# Database backup dumps (db/backups/ README is tracked, dumps are not)
+db/backups/*.sql.gz
+db/backups/*.dump
+db/backups/*.sql
+
+# Raw data archive (lives on FTP/object storage, not in Git —
+# only data/sample/ is committed)
+data/raw/
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/
+TEMP/
+

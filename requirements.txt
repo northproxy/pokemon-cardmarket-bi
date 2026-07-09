@@ -1,0 +1,17 @@
+# Core
+python-dotenv>=1.0
+psycopg[binary]>=3.1
+
+# Ingestion
+requests>=2.31
+
+# Collection import
+pandas>=2.2
+openpyxl>=3.1
+
+# Tests
+pytest>=8.0
+
+# daily-price-guide
+requests==2.33.1
+python-dotenv==1.2.2

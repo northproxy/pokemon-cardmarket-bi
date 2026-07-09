@@ -1,0 +1,10 @@
+-- 005_create_watchlist.sql
+-- Optional watchlist of products to track, independent of ownership.
+-- Firm requirement: partial unique index enforcing one active row per
+-- idProduct (Postgres/Supabase confirmed, so no application-level fallback
+-- needed) — see docs/02-data-model.md:
+--
+--   CREATE UNIQUE INDEX ux_watchlist_active_product
+--     ON watchlist (idProduct) WHERE isActive = true;
+--
+-- TODO (Phase 1): write CREATE TABLE watchlist (...) + the index above

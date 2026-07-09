@@ -1,0 +1,5 @@
+-- check_missing_products.sql
+-- Warning: price_snapshots rows whose idProduct has no matching row in
+-- products yet (catalog lags price guide by design). See docs/04.
+--
+-- TODO (Phase 3): implement

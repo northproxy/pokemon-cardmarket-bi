@@ -1,0 +1,5 @@
+-- vw_collection_summary.sql
+-- Aggregate counts/totals + "most valuable item" (tie-break: highest value ->
+-- earliest purchaseDate -> lowest collectionItemId).
+--
+-- TODO (Phase 6): implement per data dictionary definition

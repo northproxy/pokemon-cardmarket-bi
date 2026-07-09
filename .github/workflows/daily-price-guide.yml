@@ -1,0 +1,38 @@
+name: Daily Price Guide
+
+on:
+  schedule:
+    # 17:00 UTC ≈ 19:00 (7pm) Europe/Vienna during CEST (summer, UTC+2).
+    # During CET (winter, UTC+1) this actually fires at 18:00 Vienna time
+    # instead — GitHub Actions cron is UTC-only and does not shift for DST.
+    # This only affects *when* the job starts, not correctness: the script
+    # computes snapshotDate from Europe/Vienna at whatever moment it
+    # actually runs, so the archived date is always right regardless of the
+    # exact wall-clock hour. See DECISIONS.md for the full note.
+    - cron: '0 17 * * *'
+  workflow_dispatch: {}  # allows manual runs from the Actions tab
+
+jobs:
+  download-price-guide:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run daily price guide download
+        env:
+          PIPELINE_TIMEZONE: Europe/Vienna
+          CARDMARKET_PRICE_GUIDE_URL: https://downloads.s3.cardmarket.com/productCatalog/priceGuide/price_guide_6.json
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASS: ${{ secrets.FTP_PASS }}
+          FTP_REMOTE_DIR: ${{ secrets.FTP_REMOTE_DIR }}
+        run: python -m src.ingestion.download_price_guide

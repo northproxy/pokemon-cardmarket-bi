@@ -1,0 +1,6 @@
+-- vw_collection_current_value.sql
+-- Current estimated value per unsold collection item, plus
+-- estimatedGainLoss / estimatedGainLossPercent (null if purchasePrice missing/zero).
+-- This view's non-null coverage is an MVP success criterion — see docs/01.
+--
+-- TODO (Phase 6): implement per data dictionary definition

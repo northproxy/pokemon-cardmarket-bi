@@ -1,0 +1,6 @@
+-- check_category_mismatch.sql
+-- Warning: idCategory differs between price_snapshots (point-in-time,
+-- source-observed) and products (as of last catalog refresh).
+-- Never blocks load, never auto-corrects either value. See docs/02.
+--
+-- TODO (Phase 3): implement

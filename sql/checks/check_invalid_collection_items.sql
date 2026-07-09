@@ -1,0 +1,13 @@
+-- check_invalid_collection_items.sql
+-- Informational only (not tied to either scheduled pipeline; run after a
+-- collection import or periodically). Catches inconsistencies introduced
+-- after import, e.g. via manual edits. See docs/04-etl-pipeline-design.md,
+-- "Collection Integrity Check (Informational)".
+--
+-- Flags:
+--   isGraded = true but gradingCompany or grade is null
+--   isSold = true but soldPrice or soldDate is null (or the reverse)
+--   purchasePrice or soldPrice is negative
+--   purchaseDate or soldDate is in the future
+--
+-- TODO (Phase 5/6): implement

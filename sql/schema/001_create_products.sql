@@ -1,0 +1,8 @@
+-- 001_create_products.sql
+-- Unified Cardmarket product catalog (singles + non-singles).
+-- Must be created first: idProduct is referenced (logically or via FK)
+-- by price_snapshots, collection_items, collection_import_staging,
+-- watchlist, and analytics_signals.
+-- Field list and business rules: docs/02-data-model.md, docs/03-data-dictionary.md
+--
+-- TODO (Phase 1): write CREATE TABLE products (...)

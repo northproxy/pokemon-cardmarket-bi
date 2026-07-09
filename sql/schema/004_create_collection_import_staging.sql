@@ -1,0 +1,7 @@
+-- 004_create_collection_import_staging.sql
+-- Staging table for CSV/Excel collection imports before they become
+-- collection_items rows. Includes storageLocation/personalNote (added v0.4).
+-- matchStatus values: ready_to_import, needs_review, waiting_for_product,
+-- error, imported. See docs/08-collection-import-flow.md for matching logic.
+--
+-- TODO (Phase 1): write CREATE TABLE collection_import_staging (...)

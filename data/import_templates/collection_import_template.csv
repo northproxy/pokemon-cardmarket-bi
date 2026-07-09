@@ -1,0 +1,4 @@
+externalId,providedIdProduct,rawProductName,language,condition,acquisitionType,purchasePrice,purchaseDate,isSealed,storageLocation,personalNote
+example-001,,Charizard ex,EN,Near Mint,pulled,,2026-06-01,false,Binder 1 - Page 3,Pulled from a Scarlet & Violet booster pack
+example-002,12345,,DE,Near Mint,bought_single,4.50,2026-06-02,false,Binder 1 - Page 5,
+example-003,,Booster Box - Paldea Evolved,DE,Near Mint,bought_sealed,110.00,2026-05-20,true,Shelf A,Still sealed

@@ -1,0 +1,73 @@
+name: Product Catalog Pipeline
+
+# Keeps product metadata reasonably fresh and unblocks any
+# collection_import_staging rows waiting on a not-yet-catalogued product.
+# See docs/04-etl-pipeline-design.md and docs/07-github-actions-logic.md.
+
+on:
+  schedule:
+    # Twice per month: the 1st and the 15th, 06:00 UTC (same reasoning as
+    # the daily workflow — safely mid-morning in Europe/Vienna either way).
+    - cron: "0 6 1,15 * *"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why this run is being triggered manually (e.g. 'new set released, don't want to wait for the next scheduled date')"
+        required: false
+        type: string
+
+# A catalog run and a daily price-guide run should not write to the database
+# at the same time, and the same catalog run should never overlap itself.
+concurrency:
+  group: product-catalog
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run-product-catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      CARDMARKET_PRODUCTS_SINGLES_URL: ${{ vars.CARDMARKET_PRODUCTS_SINGLES_URL }}
+      CARDMARKET_PRODUCTS_NONSINGLES_URL: ${{ vars.CARDMARKET_PRODUCTS_NONSINGLES_URL }}
+      PIPELINE_TIMEZONE: ${{ vars.PIPELINE_TIMEZONE || 'Europe/Vienna' }}
+
+      FTP_HOST: ${{ secrets.FTP_HOST }}
+      FTP_USER: ${{ secrets.FTP_USER }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      FTP_REMOTE_PATH: ${{ secrets.FTP_REMOTE_PATH }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt --break-system-packages
+
+      # Single entrypoint, same reasoning as the daily workflow: download
+      # both catalog files, archive (canonical or rerun-suffixed), validate,
+      # enrich with productGroup/sourceFile, upsert into products, recheck
+      # waiting_for_product staging rows, run catalog data quality checks.
+      # If either source file fails, products is left untouched and this
+      # step exits non-zero — see docs/04, "Product Catalog Failure".
+      - name: Run product catalog pipeline
+        run: python -m src.ingestion.run_product_catalog
+
+      - name: Write job summary
+        if: always()
+        run: |
+          if [ -f pipeline_summary.md ]; then
+            cat pipeline_summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No pipeline_summary.md was produced by this run." >> "$GITHUB_STEP_SUMMARY"
+          fi

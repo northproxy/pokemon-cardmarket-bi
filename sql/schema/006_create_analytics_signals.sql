@@ -1,0 +1,8 @@
+-- 006_create_analytics_signals.sql
+-- Generated analytics signals (growth, price_spike, new_product,
+-- collection_gain, collection_loss, missing_price_data).
+-- collection_gain/collection_loss must key on collectionItemId, not just
+-- idProduct (two copies of the same product can have different
+-- purchasePrice). See docs/09-analytics-signal-definitions.md.
+--
+-- TODO (Phase 1): write CREATE TABLE analytics_signals (...)

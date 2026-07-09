@@ -1,0 +1,5 @@
+-- check_empty_price_snapshot.sql
+-- Failure: a snapshotDate with zero rows in price_snapshots after a run
+-- that reported success.
+--
+-- TODO (Phase 3): implement

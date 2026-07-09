@@ -1,0 +1,5 @@
+-- vw_product_price_history.sql
+-- Historical trend per product, including isActiveInCatalog (history stays
+-- visible regardless of current catalog status).
+--
+-- TODO (Phase 6): implement per data dictionary definition

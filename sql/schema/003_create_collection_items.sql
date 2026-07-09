@@ -1,0 +1,7 @@
+-- 003_create_collection_items.sql
+-- Personal collection. One row = one physical item, never idProduct+quantity.
+-- Defaults: language='DE', condition='Near Mint', acquisitionType='pulled',
+-- isGraded=false, isSold=false, isSealed=false.
+-- Field list: docs/02-data-model.md, docs/03-data-dictionary.md
+--
+-- TODO (Phase 1): write CREATE TABLE collection_items (...)

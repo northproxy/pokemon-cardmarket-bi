@@ -1,0 +1,6 @@
+-- 002_create_price_snapshots.sql
+-- Full daily price guide snapshots. PK: (snapshotDate, idProduct).
+-- Loaded via upsert by that composite key — see docs/02, docs/04.
+-- No strict FK to products.idProduct (catalog lags price guide by design).
+--
+-- TODO (Phase 1): write CREATE TABLE price_snapshots (...)

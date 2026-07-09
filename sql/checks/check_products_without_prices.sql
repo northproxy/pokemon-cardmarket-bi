@@ -1,0 +1,5 @@
+-- check_products_without_prices.sql
+-- Warning: active catalog products with no current price data.
+-- Backing query for vw_products_without_prices.
+--
+-- TODO (Phase 3/6): implement

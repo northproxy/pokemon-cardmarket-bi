@@ -1,0 +1,6 @@
+-- vw_products_without_prices.sql
+-- Data-quality view: catalog products with no current price data.
+-- Complements (does not duplicate) the missing_price_data analytics signal —
+-- this view is "missing right now", the signal is a dated historical record.
+--
+-- TODO (Phase 6): implement per data dictionary definition

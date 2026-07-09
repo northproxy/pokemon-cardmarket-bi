@@ -1,0 +1,6 @@
+-- check_duplicate_price_snapshots.sql
+-- Failure: any duplicate (snapshotDate, idProduct) pair remaining after
+-- upsert. Should never happen if the upsert key is correct — this check
+-- exists to catch it if it ever does. See docs/04.
+--
+-- TODO (Phase 3): implement

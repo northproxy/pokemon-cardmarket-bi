@@ -1,0 +1,5 @@
+-- vw_latest_prices.sql
+-- One latest price row per product + estimatedMarketValue + isActiveInCatalog.
+-- Field-level definition: docs/03-data-dictionary.md (source of truth for views).
+--
+-- TODO (Phase 6): implement per data dictionary definition

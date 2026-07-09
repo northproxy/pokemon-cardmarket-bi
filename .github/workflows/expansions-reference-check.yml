@@ -1,0 +1,37 @@
+name: Expansions Reference Check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "data/reference/expansions.csv"
+      - "data/raw/cardmarket/pokemon/product_catalogs/**"
+      - "scripts/reference/**"
+      - "tests/test_expansions_reference.py"
+
+jobs:
+  validate-expansions-reference:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run unit tests
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pytest tests/test_expansions_reference.py
+
+      - name: Validate expansion coverage if product catalogs exist
+        run: |
+          if ls data/raw/cardmarket/pokemon/product_catalogs/products_*_6_*.json 1> /dev/null 2>&1; then
+            python scripts/reference/validate_expansions_reference.py
+          else
+            echo "No product catalog files found in repo. Skipping coverage validation."
+          fi
