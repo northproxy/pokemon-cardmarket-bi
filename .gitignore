@@ -12,6 +12,7 @@ venv/
 # Local database files
 *.sqlite3
 *.db
+*.db-journal
 
 # Logs
 *.log

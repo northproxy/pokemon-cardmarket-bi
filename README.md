@@ -1,6 +1,6 @@
 # Pokémon Cardmarket BI Tracker
 
-A learning-focused data engineering and BI portfolio project for tracking Pokémon product prices and personal collection value, using official Cardmarket downloadable JSON files.
+git add.
 
 The project stores daily price snapshots, archives raw data, normalizes product and price information, supports personal collection imports, and defines BI-friendly analytics signals for market and collection analysis.
 

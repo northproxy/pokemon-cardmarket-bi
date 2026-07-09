@@ -13,7 +13,7 @@ Usage:
 
 Requires (see .env.example / src/config/config.py):
     PIPELINE_TIMEZONE, CARDMARKET_PRICE_GUIDE_URL,
-    FTP_HOST, FTP_USER, FTP_PASSWORD, FTP_REMOTE_PATH
+    FTP_HOST, FTP_USER, FTP_PASS, FTP_REMOTE_DIR
 """
 from __future__ import annotations
 
