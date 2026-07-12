@@ -167,3 +167,52 @@ never raises even if Telegram itself is unreachable — the pipeline's exit
 code is still what actually signals failure to GitHub Actions; the Telegram
 message is a convenience notification layered on top, not the source of
 truth for success/failure.
+
+## 11. Product catalog archive pipeline — weekly cadence, partial-failure archiving, duplicated FTP helpers
+
+Built `src/ingestion/download_product_catalogs.py` +
+`.github/workflows/product-catalog.yml`, mirroring the daily price guide
+script's shape (download -> local save -> FTP upload -> Telegram notify),
+for both `products_singles_6.json` and `products_nonsingles_6.json`.
+
+**Decision A — cadence changed to weekly (every Friday), not twice-monthly.**
+`01-mvp-scope.md`, `04-etl-pipeline-design.md`, `05-raw-archive-strategy.md`,
+`06-github-repository-structure.md`, and `07-github-actions-logic.md` all
+document a 1st/15th-of-the-month schedule, with stated reasoning (product
+metadata changes far less often than price data; twice-monthly avoids
+unnecessary storage/processing). This is a genuine, explicit deviation from
+that documented decision, not an oversight — requested directly, flagged at
+the time it was requested. **Those five docs have not been updated to
+match.** Their "twice per month" language should be treated as stale on
+this one point until they're corrected. Nothing about correctness depends
+on this — weekly is strictly more conservative (fresher catalog data) than
+twice-monthly, just more frequent.
+
+**Decision B — partial-file failure at the archive stage does not block the
+other file.** `04`/`07` document a DATABASE LOAD rule: "if one catalog file
+succeeds and the other fails, do not update `products` at all." That rule
+is about the `products` table, which this script does not touch. At the
+*archive* stage, singles and non-singles are attempted and archived fully
+independently — a failure downloading/uploading one never prevents
+archiving the other, since silently discarding already-successfully-
+downloaded data would contradict the raw archive's core "never discard
+data" principle (`05`). The run still exits non-zero and sends a
+"PARTIAL FAILURE" Telegram message if either file failed, so it stays
+visible. When the actual DB-load stage is eventually built, *that* stage
+should still enforce the all-or-nothing `products` table rule from `04`/`07`
+as documented — this decision only concerns archiving, not loading.
+
+**Decision C — `connect_ftp`/`list_remote_filenames`/`upload_to_ftp` are
+duplicated from `download_price_guide.py`, not extracted into a shared
+`src/utils/ftp_client.py`.** Deliberate short-term debt: extracting a
+shared helper now means touching the already-tested, already-working daily
+price guide script while building a new one. Worth doing as a follow-up
+refactor once the catalog script is equally proven in production — not
+before. `06-github-repository-structure.md` already anticipates an FTP
+helper living in `src/utils/` eventually; this is the natural point to
+finally build it.
+
+**Not addressed by this change:** JSON validation, `productGroup`/
+`sourceFile` enrichment, duplicate `idProduct` detection across the two
+files, and loading into `products` remain out of scope, same as the daily
+pipeline's Phase 0a boundary (§2).

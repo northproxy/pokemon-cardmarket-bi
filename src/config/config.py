@@ -1,11 +1,10 @@
 """
 Configuration loading for the PCIT pipeline.
 
-Scope note: this currently exposes PIPELINE_TIMEZONE, CARDMARKET_*, FTP_*,
-and TELEGRAM_* (notifications), since that's what Phase 0a needs.
-DATABASE_URL and other CARDMARKET_*_URL values will be added here as later
-phases actually need them, rather than being stubbed out speculatively
-ahead of time.
+Scope note: this exposes PIPELINE_TIMEZONE, CARDMARKET_* (price guide +
+product catalog URLs), FTP_*, and TELEGRAM_* (notifications). DATABASE_URL
+will be added here once a later phase actually needs it, rather than being
+stubbed out speculatively ahead of time.
 """
 import os
 
@@ -58,6 +57,19 @@ CARDMARKET_PRICE_GUIDE_URL = os.environ.get(
     "CARDMARKET_PRICE_GUIDE_URL",
     "https://downloads.s3.cardmarket.com/productCatalog/priceGuide/price_guide_6.json",
 )
+
+# Added for the product catalog download (src/ingestion) — see
+# DECISIONS.md §11. Same "known, non-sensitive URL, safe to default"
+# reasoning as CARDMARKET_PRICE_GUIDE_URL above.
+CARDMARKET_PRODUCTS_SINGLES_URL = os.environ.get(
+    "CARDMARKET_PRODUCTS_SINGLES_URL",
+    "https://downloads.s3.cardmarket.com/productCatalog/productList/products_singles_6.json",
+)
+CARDMARKET_PRODUCTS_NONSINGLES_URL = os.environ.get(
+    "CARDMARKET_PRODUCTS_NONSINGLES_URL",
+    "https://downloads.s3.cardmarket.com/productCatalog/productList/products_nonsingles_6.json",
+)
+
 FTP_HOST = _require_env("FTP_HOST")
 FTP_USER = _require_env("FTP_USER")
 FTP_PASS = _require_env("FTP_PASS")
@@ -70,7 +82,7 @@ FTP_REMOTE_DIR = _require_env("FTP_REMOTE_DIR")
 # notification is sent" (logged, not fatal), not "crash the entire
 # archiving pipeline before it even starts." Notifications are a
 # nice-to-have layered on top of archiving; they must never become a
-# prerequisite for archiving itself. src/ingestion/download_price_guide.py
-# is responsible for checking these are set before attempting to notify.
+# prerequisite for archiving itself. Ingestion scripts are responsible for
+# checking these are set before attempting to notify.
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")

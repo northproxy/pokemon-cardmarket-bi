@@ -1,46 +1,26 @@
-name: Product Catalog Pipeline
-
-# Keeps product metadata reasonably fresh and unblocks any
-# collection_import_staging rows waiting on a not-yet-catalogued product.
-# See docs/04-etl-pipeline-design.md and docs/07-github-actions-logic.md.
+name: Product Catalog
 
 on:
   schedule:
-    # Twice per month: the 1st and the 15th, 06:00 UTC (same reasoning as
-    # the daily workflow — safely mid-morning in Europe/Vienna either way).
-    - cron: "0 6 1,15 * *"
-  workflow_dispatch:
-    inputs:
-      reason:
-        description: "Why this run is being triggered manually (e.g. 'new set released, don't want to wait for the next scheduled date')"
-        required: false
-        type: string
-
-# A catalog run and a daily price-guide run should not write to the database
-# at the same time, and the same catalog run should never overlap itself.
-concurrency:
-  group: product-catalog
-  cancel-in-progress: false
-
-permissions:
-  contents: read
+    # Weekly, every Friday, 17:00 UTC — see DECISIONS.md §11.
+    #
+    # This deliberately DEVIATES from the twice-monthly (1st/15th) cadence
+    # documented in 01-mvp-scope.md, 04-etl-pipeline-design.md,
+    # 05-raw-archive-strategy.md, 06-github-repository-structure.md, and
+    # 07-github-actions-logic.md. Those docs have NOT been updated to match
+    # this change yet — treat their "twice per month" language as stale
+    # for this one specific point until they are.
+    #
+    # cron day-of-week: 5 = Friday (0=Sunday ... 6=Saturday).
+    # 17:00 UTC chosen to match the daily price guide workflow's timing
+    # convention (see daily-price-guide.yml) — same "run comfortably after
+    # Cardmarket's data refresh" reasoning, not a precision requirement.
+    - cron: '0 17 * * 5'
+  workflow_dispatch: {}  # allows manual runs from the Actions tab
 
 jobs:
-  run-product-catalog:
+  download-product-catalogs:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    env:
-      CARDMARKET_PRODUCTS_SINGLES_URL: ${{ vars.CARDMARKET_PRODUCTS_SINGLES_URL }}
-      CARDMARKET_PRODUCTS_NONSINGLES_URL: ${{ vars.CARDMARKET_PRODUCTS_NONSINGLES_URL }}
-      PIPELINE_TIMEZONE: ${{ vars.PIPELINE_TIMEZONE || 'Europe/Vienna' }}
-
-      FTP_HOST: ${{ secrets.FTP_HOST }}
-      FTP_USER: ${{ secrets.FTP_USER }}
-      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
-      FTP_REMOTE_PATH: ${{ secrets.FTP_REMOTE_PATH }}
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,26 +28,22 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-          cache: "pip"
+          python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt --break-system-packages
+        run: pip install -r requirements.txt
 
-      # Single entrypoint, same reasoning as the daily workflow: download
-      # both catalog files, archive (canonical or rerun-suffixed), validate,
-      # enrich with productGroup/sourceFile, upsert into products, recheck
-      # waiting_for_product staging rows, run catalog data quality checks.
-      # If either source file fails, products is left untouched and this
-      # step exits non-zero — see docs/04, "Product Catalog Failure".
-      - name: Run product catalog pipeline
-        run: python -m src.ingestion.run_product_catalog
-
-      - name: Write job summary
-        if: always()
-        run: |
-          if [ -f pipeline_summary.md ]; then
-            cat pipeline_summary.md >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "No pipeline_summary.md was produced by this run." >> "$GITHUB_STEP_SUMMARY"
-          fi
+      - name: Run product catalog download
+        env:
+          PIPELINE_TIMEZONE: Europe/Vienna
+          CARDMARKET_PRODUCTS_SINGLES_URL: https://downloads.s3.cardmarket.com/productCatalog/productList/products_singles_6.json
+          CARDMARKET_PRODUCTS_NONSINGLES_URL: https://downloads.s3.cardmarket.com/productCatalog/productList/products_nonsingles_6.json
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASS: ${{ secrets.FTP_PASS }}
+          FTP_REMOTE_DIR: ${{ secrets.FTP_REMOTE_DIR }}
+          # Optional — see DECISIONS.md §10. If either secret is unset,
+          # notify_telegram() skips silently rather than failing the run.
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m src.ingestion.download_product_catalogs
