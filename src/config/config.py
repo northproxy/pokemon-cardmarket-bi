@@ -1,10 +1,11 @@
 """
 Configuration loading for the PCIT pipeline.
 
-Scope note: this currently exposes only PIPELINE_TIMEZONE, since that's what
-Phase 0a needs. DATABASE_URL, FTP_*, and CARDMARKET_*_URL will be added here
-as later phases actually need them, rather than being stubbed out
-speculatively ahead of time.
+Scope note: this currently exposes PIPELINE_TIMEZONE, CARDMARKET_*, FTP_*,
+and TELEGRAM_* (notifications), since that's what Phase 0a needs.
+DATABASE_URL and other CARDMARKET_*_URL values will be added here as later
+phases actually need them, rather than being stubbed out speculatively
+ahead of time.
 """
 import os
 
@@ -61,3 +62,15 @@ FTP_HOST = _require_env("FTP_HOST")
 FTP_USER = _require_env("FTP_USER")
 FTP_PASS = _require_env("FTP_PASS")
 FTP_REMOTE_DIR = _require_env("FTP_REMOTE_DIR")
+
+# Telegram notifications (see DECISIONS.md §10).
+#
+# Unlike FTP_*, these are OPTIONAL — read with os.environ.get, not
+# _require_env. A missing Telegram token/chat ID should mean "no
+# notification is sent" (logged, not fatal), not "crash the entire
+# archiving pipeline before it even starts." Notifications are a
+# nice-to-have layered on top of archiving; they must never become a
+# prerequisite for archiving itself. src/ingestion/download_price_guide.py
+# is responsible for checking these are set before attempting to notify.
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")

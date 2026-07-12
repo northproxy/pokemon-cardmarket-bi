@@ -1,7 +1,5 @@
 # Pokémon Cardmarket BI Tracker
 
-git add.
-
 The project stores daily price snapshots, archives raw data, normalizes product and price information, supports personal collection imports, and defines BI-friendly analytics signals for market and collection analysis.
 
 ## Problem

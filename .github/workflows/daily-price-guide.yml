@@ -8,7 +8,7 @@ on:
     # This only affects *when* the job starts, not correctness: the script
     # computes snapshotDate from Europe/Vienna at whatever moment it
     # actually runs, so the archived date is always right regardless of the
-    # exact wall-clock hour. See DECISIONS.md for the full note.
+    # exact wall-clock hour. See DECISIONS.md §8 for the full note.
     - cron: '0 17 * * *'
   workflow_dispatch: {}  # allows manual runs from the Actions tab
 
@@ -35,4 +35,8 @@ jobs:
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASS: ${{ secrets.FTP_PASS }}
           FTP_REMOTE_DIR: ${{ secrets.FTP_REMOTE_DIR }}
+          # Optional — see DECISIONS.md §10. If either secret is unset,
+          # notify_telegram() skips silently rather than failing the run.
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m src.ingestion.download_price_guide

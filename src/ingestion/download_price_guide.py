@@ -2,11 +2,11 @@
 Daily price guide ingestion — Phase 0a.
 
 Scope, on purpose: this script covers download -> local save -> FTP upload
-only. It does NOT validate JSON structure/fields, normalize holo field
-names, or load into the database — those are separate ETL stages
-(04-etl-pipeline-design.md: validate -> transform -> load are distinct
-steps) that come after archiving is proven reliable. See DECISIONS.md for
-why this scope cut is deliberate, not an oversight.
+-> Telegram notification only. It does NOT validate JSON structure/fields,
+normalize holo field names, or load into the database — those are separate
+ETL stages (04-etl-pipeline-design.md: validate -> transform -> load are
+distinct steps) that come after archiving is proven reliable. See
+DECISIONS.md for why this scope cut is deliberate, not an oversight.
 
 Usage:
     python -m src.ingestion.download_price_guide
@@ -14,6 +14,10 @@ Usage:
 Requires (see .env.example / src/config/config.py):
     PIPELINE_TIMEZONE, CARDMARKET_PRICE_GUIDE_URL,
     FTP_HOST, FTP_USER, FTP_PASS, FTP_REMOTE_DIR
+
+Optional (see .env.example / src/config/config.py):
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID — if either is unset, notification
+    is skipped (logged), not treated as an error (DECISIONS.md §10).
 """
 from __future__ import annotations
 
@@ -32,16 +36,18 @@ from src.utils.date_helpers import get_pipeline_date
 PREFIX = "price_guide_6"
 
 # Local working copy — plain overwrite on rerun, no suffix logic (see the
-# project's (a) decision: rerun-suffixing applies to the FTP archive only).
+# project's decision: rerun-suffixing applies to the FTP archive only).
 LOCAL_ARCHIVE_DIR = Path("data/raw/cardmarket/pokemon/price_guides")
 
 # Actual confirmed FTP layout is price_guides/ and product_catalogs/ directly
-# under FTP_REMOTE_PATH (account root) — flatter than the nested
+# under FTP_REMOTE_DIR (account root) — flatter than the nested
 # /raw/cardmarket/pokemon/price_guides/ tree originally described in
-# 05-raw-archive-strategy.md. See DECISIONS.md: this script follows the
+# 05-raw-archive-strategy.md. See DECISIONS.md §3: this script follows the
 # real, confirmed server layout; 05's folder-structure diagram should be
 # updated to match rather than the other way around.
 REMOTE_SUBDIR = "price_guides"
+
+TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
 
 
 def fetch_price_guide_bytes(url: str) -> bytes:
@@ -59,7 +65,7 @@ def fetch_price_guide_bytes(url: str) -> bytes:
 
 def save_local_copy(content: bytes, snapshot_date: date) -> Path:
     """Write the plain local working copy. Overwrites any existing file for
-    this date — no rerun-suffix logic locally (see (a) decision)."""
+    this date — no rerun-suffix logic locally (see module docstring)."""
     LOCAL_ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     filename = build_filename(PREFIX, snapshot_date)  # always the base name locally
     local_path = LOCAL_ARCHIVE_DIR / filename
@@ -95,6 +101,51 @@ def upload_to_ftp(ftps: FTP_TLS, local_path: Path, remote_dir: str, remote_filen
     return remote_full_path
 
 
+def build_success_message(snapshot_date: date, filename: str, size_bytes: int) -> str:
+    """
+    Build the Telegram success message.
+
+    "Last item / idProduct" is intentionally a placeholder for now
+    (DECISIONS.md §10) — reporting it correctly requires knowing whether
+    price_guide_6.json's root is a bare list or a nested object (e.g.
+    {"priceGuides": [...]}), which hasn't been confirmed yet. Item COUNT
+    would be a one-line addition (len(json.loads(content))); the specific
+    last idProduct needs that structure confirmed first, per the earlier
+    discussion to revisit this separately.
+    """
+    return (
+        "✅ price_guide archived\n"
+        f"Date: {snapshot_date.isoformat()}\n"
+        f"File: {filename}\n"
+        f"Size: {size_bytes:,} bytes\n"
+        "Last item / idProduct: TBD — pending JSON structure confirmation"
+    )
+
+
+def build_failure_message(exc: Exception) -> str:
+    return f"❌ price_guide FAILED\nError: {exc}"
+
+
+def notify_telegram(message: str) -> None:
+    """
+    Send a Telegram notification. Never raises — a notification failure
+    (or Telegram simply not being configured) must never fail the pipeline
+    itself (DECISIONS.md §10). Archiving is the thing that matters; the
+    notification is a convenience layered on top of it.
+    """
+    if not config.TELEGRAM_BOT_TOKEN or not config.TELEGRAM_CHAT_ID:
+        print("[price-guide] Telegram not configured — skipping notification.")
+        return
+    try:
+        requests.post(
+            TELEGRAM_API_URL.format(token=config.TELEGRAM_BOT_TOKEN),
+            data={"chat_id": config.TELEGRAM_CHAT_ID, "text": message},
+            timeout=10,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[price-guide] Telegram notify failed: {exc}", file=sys.stderr)
+
+
 def run() -> None:
     snapshot_date = get_pipeline_date(config.PIPELINE_TIMEZONE)
     print(f"[price-guide] snapshotDate (Europe/Vienna) = {snapshot_date.isoformat()}")
@@ -127,6 +178,7 @@ def run() -> None:
         except Exception:
             ftps.close()
 
+    notify_telegram(build_success_message(snapshot_date, remote_filename, len(content)))
     print("[price-guide] done.")
 
 
@@ -135,4 +187,5 @@ if __name__ == "__main__":
         run()
     except Exception as exc:  # noqa: BLE001
         print(f"[price-guide] FAILED: {exc}", file=sys.stderr)
+        notify_telegram(build_failure_message(exc))
         sys.exit(1)

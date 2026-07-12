@@ -127,3 +127,43 @@ the path. Unlike `PIPELINE_TIMEZONE` (§ no-fallback-on-purpose, since a
 wrong timezone silently corrupts `snapshotDate`), a wrong/missing URL here
 just fails loudly at the HTTP request step — there's no silent-corruption
 risk that argues for withholding a sensible default.
+
+## 10. Telegram notification added — optional config, item-count deferred
+
+Added a Telegram notification (`notify_telegram`) fired once at the end of
+a successful run and once in the top-level exception handler on failure.
+Two calls were made that aren't specified anywhere in `01`–`11`, since
+notifications aren't part of the versioned design at all yet:
+
+**Decision A — `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` are optional, not
+required.** Unlike `FTP_*` (`_require_env`), these are read with
+`os.environ.get` and default to `None`. If either is unset,
+`notify_telegram()` logs a line and returns — it does not raise, and it
+never blocks or fails the archiving run. Rationale: archiving is the thing
+Stage 0 exists to guarantee; a notification is a convenience on top of it,
+and making the whole pipeline depend on a Telegram bot being configured
+would be backwards. This deliberately breaks from the `FTP_*` precedent
+(§7) rather than copying it blindly.
+
+**Decision B — the message includes date, filename, and byte size now; item
+count / last `idProduct` is a placeholder (`"TBD"`) for the moment.**
+Reporting the actual last item (or item count) requires knowing whether
+`price_guide_6.json`'s root is a bare array or a nested object with a
+wrapper key — not yet confirmed. Rather than guess at the structure and
+risk a wrong assumption baked into a notification message, `build_success_
+message()` reports what's already known to be correct (date, filename,
+size) and leaves the item field explicitly marked as pending, to be
+revisited once the real file structure is confirmed. Note this is *not* the
+same thing as JSON validation (§2, still out of scope) — reading one field
+to report in a notification is a much smaller ask than validating the file,
+but it's still new territory worth flagging rather than silently expanding
+Phase 0a's scope.
+
+**Failure path also notifies.** The top-level `except` block in
+`__main__` now calls `notify_telegram(build_failure_message(exc))` before
+`sys.exit(1)`, so a failed run (download error, FTP error, etc.) produces a
+Telegram message too, not just successful ones. Like the success path, this
+never raises even if Telegram itself is unreachable — the pipeline's exit
+code is still what actually signals failure to GitHub Actions; the Telegram
+message is a convenience notification layered on top, not the source of
+truth for success/failure.
