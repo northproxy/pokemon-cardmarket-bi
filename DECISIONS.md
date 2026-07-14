@@ -202,7 +202,7 @@ visible. When the actual DB-load stage is eventually built, *that* stage
 should still enforce the all-or-nothing `products` table rule from `04`/`07`
 as documented — this decision only concerns archiving, not loading.
 
-**Decision C — `connect_ftp`/`list_remote_filenames`/`upload_to_ftp` are
+**Decision C (RESOLVED — see §12) — `connect_ftp`/`list_remote_filenames`/`upload_to_ftp` were
 duplicated from `download_price_guide.py`, not extracted into a shared
 `src/utils/ftp_client.py`.** Deliberate short-term debt: extracting a
 shared helper now means touching the already-tested, already-working daily
@@ -216,3 +216,38 @@ finally build it.
 `sourceFile` enrichment, duplicate `idProduct` detection across the two
 files, and loading into `products` remain out of scope, same as the daily
 pipeline's Phase 0a boundary (§2).
+
+## 12. FTP helper extracted into src/utils/ftp_client.py (resolves §11 Decision C)
+
+`connect_ftp`, `list_remote_filenames`, and `upload_to_ftp` were duplicated
+verbatim between `download_price_guide.py` and `download_product_catalogs.py`
+(§11 Decision C, deliberately, as short-term debt). Now that the product
+catalog script has run and its tests pass against the real archive-writing
+logic, extracted both copies into one shared module:
+
+```text
+src/utils/ftp_client.py
+    connect_ftp()
+    list_remote_filenames(ftps, remote_dir)
+    upload_to_ftp(ftps, local_path, remote_dir, remote_filename)
+```
+
+Both ingestion scripts now `from src.utils.ftp_client import connect_ftp,
+list_remote_filenames, upload_to_ftp` instead of defining their own copies.
+This matches `06-github-repository-structure.md`'s own anticipated shape
+for `src/utils/` ("FTP helpers" is explicitly listed there already) — this
+is the point that expectation gets fulfilled, not a new architectural
+choice.
+
+**No changes were needed in either existing test file**
+(`test_download_price_guide.py`, `test_download_product_catalogs.py`).
+Both patch `connect_ftp` etc. as attributes of the *ingestion* module
+(e.g. `@patch("src.ingestion.download_price_guide.connect_ftp")`), and
+`unittest.mock.patch` resolves that against wherever the name is bound at
+call time — which, after a `from ... import connect_ftp`, is still the
+ingestion module's own namespace, not `ftp_client`'s. The refactor is
+therefore transparent to every test written before it.
+
+Added `tests/test_ftp_client.py` to test the extracted module directly
+(connection setup, empty-listing error handling, upload path construction)
+rather than only indirectly through the two scripts that use it.

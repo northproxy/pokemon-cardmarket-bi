@@ -3,9 +3,9 @@
 ## Document Version
 
 ```text
-Version: 0.3
-Status: Draft / MVP design (architecture decisions applied); Phase 0a implemented
-Last updated: 2026-07-07
+Version: 0.4
+Status: Draft / MVP design (architecture decisions applied)
+Last updated: 2026-07-14
 ```
 
 ## Changelog
@@ -14,7 +14,8 @@ Last updated: 2026-07-07
 |---|---|---|
 | 0.1 | 2026-07-05 | Initial version. Consolidates the local-only folder structure previously described in `06-github-repository-structure.md` ("Local-Only Folders") and `project.md` (§4), plus the dev/prod Supabase environment-variable setup from `04-etl-pipeline-design.md`, into one dedicated reference. `06` and `project.md` now point here instead of each carrying their own copy. |
 | 0.2 | 2026-07-07 | Clarified that rerun-suffix/canonical-file immutability logic applies to the FTP archive only; local data/raw/ is a plain overwrite-on-rerun working copy, since it's never the durable or load-source copy of record for reruns. |
-| 0.3 | 2026-07-07 | Corrected `FTP_REMOTE_PATH`/`FTP_PASSWORD` references to the actual, already-tested `FTP_REMOTE_DIR`/`FTP_PASS` names (matching `04` v0.5, `05` v0.3, `06` v0.6, `07` v0.5); clarified that the FTP side of the archive is flat (`price_guides/`, `product_catalogs/` directly under `FTP_REMOTE_DIR`), distinct from and unaffected by the local nested `data/raw/cardmarket/pokemon/...` working-copy convention described below. |
+| 0.3 | 2026-07-13 | Renamed `FTP_PASSWORD`/`FTP_REMOTE_PATH` to the real, already-provisioned `FTP_PASS`/`FTP_REMOTE_DIR` throughout (curl test commands and the FTP durability note) — matches the same correction already made to `06-github-repository-structure.md` and `07-github-actions-logic.md` (see `DECISIONS.md` §7 in the code repository). Local `data/raw/` folder paths were left unchanged — the nested `data/raw/cardmarket/pokemon/...` layout documented here is the local working copy structure, which is genuinely still nested in the actual code; only the FTP-side archive layout was flattened, and that's covered in `05`/`04`/`07`, not here. |
+| 0.4 | 2026-07-14 | Renamed the one remaining field-name reference (`matchStatus` → `match_status`) to match the project-wide database naming decision in `02-data-model.md` v0.5 / `03-data-dictionary.md` v0.5. No other content in this document is affected — it's almost entirely about folder paths and env vars, not schema fields. |
 
 ## Purpose
 
@@ -89,15 +90,13 @@ pokemon-cardmarket-bi/                      (git repo root)
 
 ### `data/raw/`
 
-~~The real raw archive — dated JSON files exactly as downloaded, following the immutability and rerun-suffix rules defined in `05-raw-archive-strategy.md`. This is a **local working copy**; the durable, long-term archive is wherever `FTP_HOST`/`FTP_REMOTE_PATH` actually points (or an object storage bucket, once that's finalized). Local disk alone is not durable enough for the one thing this project is built around not losing.~~
+~~The real raw archive — dated JSON files exactly as downloaded, following the immutability and rerun-suffix rules defined in `05-raw-archive-strategy.md`. This is a **local working copy**; the durable, long-term archive is wherever `FTP_HOST`/`FTP_REMOTE_DIR` actually points (or an object storage bucket, once that's finalized). Local disk alone is not durable enough for the one thing this project is built around not losing.~~
 
-The local working copy of the daily download — dated JSON files, overwritten on rerun (no suffix logic locally). The durable archive with immutability/rerun-suffix rules is FTP (`FTP_HOST`/`FTP_REMOTE_DIR` — corrected in v0.3; not `FTP_REMOTE_PATH`, see below), per 05-raw-archive-strategy.md — that's the copy the immutability rule actually protects. The load step reads directly from this local file, since it's always the latest attempt for that date; FTP's suffixed history is for audit/durability only and is never read back for loading.
-
-**One more distinction, also corrected in v0.3:** the local tree above is nested (`data/raw/cardmarket/pokemon/price_guides/...`), but the actual FTP side is flat — `price_guides/` and `product_catalogs/` sit directly under `FTP_REMOTE_DIR`, with no `cardmarket/pokemon/` nesting on the FTP account itself (see `05-raw-archive-strategy.md` v0.3). The local nested path is just this project's own working-folder convention and is unaffected by that correction; only the FTP-side path changed.
+The local working copy of the daily download — dated JSON files, overwritten on rerun (no suffix logic locally). The durable archive with immutability/rerun-suffix rules is FTP (FTP_HOST/FTP_REMOTE_DIR), per 05-raw-archive-strategy.md — that's the copy the immutability rule actually protects. The load step reads directly from this local file, since it's always the latest attempt for that date; FTP's suffixed history is for audit/durability only and is never read back for loading.
 
 ### `data/imports/collection/{incoming,processed,failed}`
 
-Personal filing convenience for collection CSV/Excel files — **not** a second source of truth. The real status of an import row lives in `collection_import_staging.matchStatus` (see `08-collection-import-flow.md`). Moving a file from `incoming/` to `processed/` or `failed/` is just how you keep track of which files you've already run, not something any script depends on.
+Personal filing convenience for collection CSV/Excel files — **not** a second source of truth. The real status of an import row lives in `collection_import_staging.match_status` (see `08-collection-import-flow.md`). Moving a file from `incoming/` to `processed/` or `failed/` is just how you keep track of which files you've already run, not something any script depends on.
 
 ```text
 incoming/    files you haven't imported yet
@@ -183,7 +182,7 @@ you (or a future contributor) assume plain FTP works.
 
 ```text
 [ ] confirm FTP connection requires explicit FTPS — test with:
-    curl --ssl-reqd -u FTP_USER:FTP_PASS ftp://FTP_HOST/${FTP_REMOTE_DIR}/
+    curl --ssl-reqd -u FTP_USER:FTP_PASS ftp://FTP_HOST/FTP_REMOTE_DIR/
 [ ] git clone the repository
 [ ] cp .env.example .env — fill in DEV Supabase DATABASE_URL, FTP
     credentials, Cardmarket source URLs

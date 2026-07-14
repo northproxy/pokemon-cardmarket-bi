@@ -3,9 +3,9 @@
 ## Document Version
 
 ```text
-Version: 0.2
+Version: 0.3
 Status: Draft / MVP design (architecture decisions applied)
-Last updated: 2026-07-04
+Last updated: 2026-07-12
 ```
 
 ## Changelog
@@ -14,6 +14,7 @@ Last updated: 2026-07-04
 |---|---|---|
 | 0.1 | 2026-07-04 | Initial MVP scope |
 | 0.2 | 2026-07-04 | Added idempotency, product lifecycle, matching strategy, retention policy, cadence justification, timezone rule, and falsifiable success criteria based on architecture review |
+| 0.3 | 2026-07-12 | Changed product catalog cadence from twice-monthly (1st/15th) to weekly (every Friday), based on an implementation-time decision made during Stage 0 (see `DECISIONS.md` §11 in the code repository). This is a genuine change to the original design decision below, not a correction of an error — the original twice-monthly reasoning was sound for its own goals, but weekly was chosen once the pipeline was actually being built. Updated the "known limitation" staleness window from ~2 weeks to ~1 week accordingly. |
 
 ## Purpose
 
@@ -29,7 +30,7 @@ The MVP is:
 
 ```text
 automated daily price data collection
-+ twice-monthly product catalog collection
++ weekly (Friday) product catalog collection
 + raw JSON archive
 + normalized database tables
 + historical price snapshots
@@ -123,16 +124,23 @@ is invalid.
 
 ### Catalog Collection Cadence
 
-The product catalog is downloaded twice per month (1st and 15th), while the price guide is downloaded daily.
+The product catalog is downloaded weekly, every Friday, while the price guide is downloaded daily.
+
+**Changed from the original twice-monthly (1st/15th) decision** during
+implementation — see `DECISIONS.md` §11 in the code repository for the
+full record. Nothing about correctness depends on this change; weekly is
+strictly more conservative (fresher catalog data) than twice-monthly, just
+more frequent.
 
 **Why this cadence:**
 
 ```text
 Product metadata (name, category, expansion) changes far less often than price
-data. Downloading it twice a month is sufficient for the MVP and avoids
-unnecessary storage and processing. This cadence is a project decision, not a
-Cardmarket-imposed schedule, and can be adjusted later if new-release timing
-needs tighter tracking.
+data, so daily catalog downloads are still unnecessary. Weekly was chosen
+over twice-monthly once the pipeline was actually being built, trading a
+small amount of extra storage/processing for meaningfully fresher product
+metadata. This cadence is a project decision, not a Cardmarket-imposed
+schedule, and can be adjusted again later if needed.
 ```
 
 **Known limitation this creates:**
@@ -144,7 +152,9 @@ local products table. This is expected and tolerated, not treated as a fatal
 error:
   - the price row is still stored in price_snapshots
   - the missing product match is reported as a data quality warning
-  - the next scheduled (or manually triggered) catalog run resolves it
+  - the next scheduled (weekly, Friday) or manually triggered catalog run
+    resolves it — worst case, about a week of staleness, down from roughly
+    two weeks under the original twice-monthly schedule
 ```
 
 ### Raw File Retention

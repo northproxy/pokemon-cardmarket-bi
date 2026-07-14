@@ -3,9 +3,9 @@
 ## Document Version
 
 ```text
-Version: 0.5
-Status: Draft / MVP design (architecture decisions applied); Phase 0a implemented
-Last updated: 2026-07-07
+Version: 0.6
+Status: Draft / MVP design (architecture decisions applied)
+Last updated: 2026-07-14
 ```
 
 ## Changelog
@@ -16,7 +16,8 @@ Last updated: 2026-07-07
 | 0.2 | 2026-07-04 | Fixed the same-date overwrite rule to match the rerun-suffix decision in docs 04/05 (this doc previously reintroduced the contradiction those docs resolved), added the `waiting_for_product` recheck step, aligned the record-count warning threshold with doc 04, added explicit catalog-failure behavior, unified "pipeline run metadata table" naming with doc 05's `archive_manifest`, and added an explicit Europe/Vienna timezone requirement for GitHub Actions runners, based on architecture review |
 | 0.3 | 2026-07-04 | Added Supabase-specific `DATABASE_URL` guidance (pooled connection, service credential over anon key), confirming Postgres/Supabase as the target database |
 | 0.4 | 2026-07-05 | Confirmed the dev/prod Supabase project split (`DATABASE_URL` differs by context — dev locally, prod in GitHub Actions secrets); added `DATABASE_URL_BACKUP` secret for manual backups; noted a third, optional `backup-database.yml` workflow (weekly, lower urgency than the two data-critical workflows) |
-| 0.5 | 2026-07-07 | Corrected FTP archive path examples and secret names (`FTP_PASS`/`FTP_REMOTE_DIR`, not `FTP_PASSWORD`/`FTP_REMOTE_PATH`; flat FTP layout, not nested under `/raw/cardmarket/pokemon/`) to match the actual provisioned FTP account and implemented workflow — see `04` v0.5 and `05` v0.3 for the same corrections; documented the actual implemented schedule for `daily-price-guide.yml` (`17:00 UTC`, with its DST-drift caveat) now that Phase 0a is built |
+| 0.5 | 2026-07-12 | Implementation-time corrections, all logged in `DECISIONS.md` in the code repository: (1) renamed the `FTP_PASSWORD`/`FTP_REMOTE_PATH` secrets to the real, already-provisioned `FTP_PASS`/`FTP_REMOTE_DIR` (§7); (2) changed the product catalog workflow's cadence from twice-monthly (1st/15th) to weekly, every Friday (§11) — a genuine decision change, not an error fix; (3) added optional `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` secrets for pipeline success/failure notifications, added to both workflows (§10). |
+| 0.6 | 2026-07-14 | Renamed all field-name references from camelCase to `snake_case` (e.g. `idProduct` → `id_product`, `snapshotDate` → `snapshot_date`), matching the project-wide database naming decision in `02-data-model.md` v0.5 / `03-data-dictionary.md` v0.5. Field names here are references, not definitions, so only spelling changed. `FTP_PASS`/`FTP_REMOTE_DIR`/`DATABASE_URL`/etc. (GitHub Actions secrets, all-caps by convention) are untouched — this rename applies to database field names only. |
 
 ## Purpose
 
@@ -91,11 +92,11 @@ The database stores cleaned and normalized data for analysis, BI views, and coll
 
 ## Timezone Requirement for Runners
 
-GitHub Actions runners default to UTC. The project's `snapshotDate` and catalog archive date rules are both defined as **the pipeline run date in the Europe/Vienna timezone, with no exceptions** (see `02-data-model.md` and `03-data-dictionary.md`).
+GitHub Actions runners default to UTC. The project's `snapshot_date` and catalog archive date rules are both defined as **the pipeline run date in the Europe/Vienna timezone, with no exceptions** (see `02-data-model.md` and `03-data-dictionary.md`).
 
 ```text
 This means the workflow must explicitly convert to Europe/Vienna before
-computing a date-based filename or a snapshotDate value. It must not rely on
+computing a date-based filename or a snapshot_date value. It must not rely on
 the runner's local date, since that will silently produce the wrong date
 whenever UTC and Europe/Vienna fall on different calendar days near midnight
 (for example, a run starting at 23:30 UTC is already the next day in
@@ -159,23 +160,6 @@ The project should create one canonical archived price guide snapshot per
 calendar day, using the Europe/Vienna date.
 ```
 
-**Implemented (v0.5):** Cardmarket's price guide refreshes at roughly 3pm
-Europe/Vienna daily. The scheduled workflow runs a few hours after that, at:
-
-```text
-cron: '0 17 * * *'   # 17:00 UTC
-```
-
-`17:00 UTC` is 19:00 (7pm) Europe/Vienna during CEST (summer, UTC+2). GitHub
-Actions `schedule` cron is UTC-only and does not shift for DST, so during
-CET (winter, UTC+1) the same cron actually fires at 18:00 Vienna time
-instead — a known, accepted ±1h seasonal drift, not a bug. This does not
-affect correctness: `snapshotDate` is computed from Europe/Vienna at
-whatever instant the job actually starts (see `get_pipeline_date()` in
-`src/utils/date_helpers.py`), so the archived date is always right
-regardless of which side of the DST boundary a given run lands on. The
-workflow also supports `workflow_dispatch` for manual triggering.
-
 ---
 
 ## Daily Price Guide Workflow Goal
@@ -232,7 +216,7 @@ The daily price guide workflow should perform the following high-level steps:
 
 ```text
 1. Start scheduled workflow
-2. Compute snapshotDate using the Europe/Vienna timezone
+2. Compute snapshot_date using the Europe/Vienna timezone
 3. Download current price_guide_6.json
 4. Save raw file with dated filename, or a rerun-suffixed copy if a file for
    that date already exists
@@ -255,7 +239,7 @@ This guarantees that the original source file is preserved even if validation, t
 The daily workflow should follow this logical flow:
 
 ```text
-Compute snapshotDate (Europe/Vienna)
+Compute snapshot_date (Europe/Vienna)
 → download official Cardmarket price guide
 → save unchanged raw JSON archive (canonical filename, or rerun-suffixed
   copy if one already exists for that date)
@@ -332,19 +316,22 @@ For the MVP, this can start as a simple check or documented quality rule. It doe
 Recommended schedule:
 
 ```text
-twice per month
+weekly
 ```
 
-Suggested dates:
+Suggested day:
 
 ```text
-1st day of the month
-15th day of the month
+every Friday
 ```
 
-The product catalog changes less frequently than prices, so daily catalog downloads are not required for the MVP.
+Changed from an original twice-monthly (1st/15th) plan during
+implementation — see `DECISIONS.md` §11 in the code repository. The
+product catalog still changes far less frequently than prices, so daily
+catalog downloads remain unnecessary; weekly was chosen as fresher than
+twice-monthly without adding meaningful storage/processing cost.
 
-**If a scheduled run on the 1st or 15th fails:** the catalog remains stale and the existing `products` table stays in use as-is. The daily price guide pipeline continues to run normally against it — new `idProduct` values with no match are reported as a warning, the same as on any other day. The catalog workflow can be manually rerun before the next scheduled date; if it isn't, catalog refresh simply waits until the next scheduled date. There is no automatic retry built into the MVP. This is an explicit decision to accept up to roughly two weeks of a stale catalog rather than build retry logic, matching the failure-handling rule in `04-etl-pipeline-design.md`.
+**If a scheduled Friday run fails:** the catalog remains stale and the existing `products` table stays in use as-is. The daily price guide pipeline continues to run normally against it — new `id_product` values with no match are reported as a warning, the same as on any other day. The catalog workflow can be manually rerun before the next scheduled date; if it isn't, catalog refresh simply waits until the next Friday. There is no automatic retry built into the MVP. This is an explicit decision to accept up to roughly a week (down from roughly two weeks under the original twice-monthly schedule) of a stale catalog rather than build retry logic, matching the failure-handling rule in `04-etl-pipeline-design.md`.
 
 ---
 
@@ -380,7 +367,7 @@ Target database table:
 products
 ```
 
-The product catalog pipeline supports the price history pipeline by maintaining local product metadata for `idProduct` values. It also unblocks any `collection_import_staging` rows that were waiting on a product that hadn't been catalogued yet.
+The product catalog pipeline supports the price history pipeline by maintaining local product metadata for `id_product` values. It also unblocks any `collection_import_staging` rows that were waiting on a product that hadn't been catalogued yet.
 
 ---
 
@@ -397,9 +384,9 @@ The product catalog workflow should perform the following high-level steps:
    files for that date already exist
 6. Upload both raw files to FTP archive
 7. Validate downloaded files
-8. Add productGroup and sourceFile metadata
+8. Add product_group and source_file metadata
 9. Load records into unified products table from the canonical files
-10. Recheck collection_import_staging rows with matchStatus =
+10. Recheck collection_import_staging rows with match_status =
     waiting_for_product against the refreshed products table
 11. Run product data quality checks
 12. Report success, warning, or failure status
@@ -418,7 +405,7 @@ Compute catalog archive date (Europe/Vienna)
   rerun-suffixed copies if ones already exist for that date)
 → upload raw archive files through FTP
 → validate JSON structure
-→ enrich records with productGroup and sourceFile
+→ enrich records with product_group and source_file
 → upsert records into products from the canonical files
 → update catalog activity metadata
 → recheck waiting_for_product staging rows
@@ -430,12 +417,12 @@ The two catalog files are loaded into one unified `products` table.
 The pipeline enriches each record with:
 
 ```text
-productGroup
-sourceFile
-isActiveInCatalog
-firstSeenAt
-lastSeenAt
-updatedAt
+product_group
+source_file
+is_active_in_catalog
+first_seen_at
+last_seen_at
+updated_at
 ```
 
 If singles load successfully but non-singles fails (or vice versa), the `products` table is not updated at all and the workflow fails — a unified catalog built from only one of the two source files is considered worse than a stale-but-consistent one. This matches the catalog failure rule in `04-etl-pipeline-design.md`.
@@ -455,7 +442,7 @@ Recommended order:
 
 Reason:
 
-The price guide may contain new `idProduct` values. Running the product catalog pipeline first increases the chance that product metadata already exists before daily price records are loaded.
+The price guide may contain new `id_product` values. Running the product catalog pipeline first increases the chance that product metadata already exists before daily price records are loaded.
 
 This does not fully eliminate missing product metadata, but it reduces the issue. The daily price guide workflow must still be able to run independently and successfully even when the product catalog workflow has not run that day, or has failed — it always uses whatever `products` table currently exists.
 
@@ -498,12 +485,18 @@ FTP_REMOTE_DIR
 
 DATABASE_URL
 DATABASE_URL_BACKUP   (only needed if backup-database.yml is implemented)
+
+TELEGRAM_BOT_TOKEN    (optional — pipeline success/failure notifications)
+TELEGRAM_CHAT_ID      (optional, same as above)
 ```
 
-**Corrected in v0.5:** these are `FTP_PASS` / `FTP_REMOTE_DIR`, not
-`FTP_PASSWORD` / `FTP_REMOTE_PATH` as earlier drafts named them — matching
-the actual, already-provisioned and tested GitHub Actions secrets and the
-implemented `daily-price-guide.yml` workflow.
+**Corrected in v0.5** (see `DECISIONS.md` §7 in the code repository):
+`FTP_PASS`/`FTP_REMOTE_DIR` are the real, already-provisioned secret names
+— an earlier draft of this doc used `FTP_PASSWORD`/`FTP_REMOTE_PATH`
+instead. `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` are new, added once
+pipeline notifications were built (§10) — unlike the other secrets here,
+both are optional: if either is unset, the pipeline simply skips sending a
+notification rather than failing.
 
 Recommended non-secret configuration values:
 
@@ -619,8 +612,8 @@ price guide file exists
 price guide file is valid JSON
 price guide file contains records
 required price fields exist
-snapshotDate was computed using Europe/Vienna and loaded correctly
-no duplicate snapshotDate + idProduct records
+snapshot_date was computed using Europe/Vienna and loaded correctly
+no duplicate snapshot_date + id_product records
 number of loaded records is greater than zero
 canonical archive file exists for the current date
 ```
@@ -635,10 +628,10 @@ products_nonsingles file exists
 both files are valid JSON
 both files contain records
 required product fields exist
-productGroup was assigned
-sourceFile was assigned
+product_group was assigned
+source_file was assigned
 products table contains both single and non_single records
-collection_import_staging rows with matchStatus = waiting_for_product were
+collection_import_staging rows with match_status = waiting_for_product were
   rechecked
 ```
 
@@ -648,7 +641,7 @@ Recommended MVP cross-check:
 
 ```text
 detect price records without matching products
-detect idCategory mismatches between price_snapshots and products
+detect id_category mismatches between price_snapshots and products
 ```
 
 Both should be reported as data quality warnings, not fatal errors.
@@ -676,8 +669,8 @@ JSON is invalid
 required fields are missing
 FTP upload failed
 database loading failed
-duplicate snapshotDate + idProduct remains after upsert
-conflicting duplicate idProduct within a combined catalog load
+duplicate snapshot_date + id_product remains after upsert
+conflicting duplicate id_product within a combined catalog load
 one product catalog file succeeds while the other fails
 ```
 
@@ -691,7 +684,7 @@ Examples:
 some price records do not have matching product metadata
 some products do not have prices yet
 new product IDs appeared in price guide
-idCategory mismatch between price_snapshots and products
+id_category mismatch between price_snapshots and products
 loaded record count differs from the previous successful run by more than 20%
 ```
 
@@ -721,7 +714,7 @@ does not build this table. Instead:
 
   - the previous run's row count can be read directly from the database
     (e.g. count of rows in price_snapshots for the most recent prior
-    snapshotDate) rather than stored separately
+    snapshot_date) rather than stored separately
   - canonical-vs-rerun status is determined by filename convention at load
     time (highest rerun suffix wins), not recorded as queryable data
 
@@ -740,7 +733,7 @@ Recommended log messages:
 
 ```text
 which pipeline is running
-the computed snapshotDate / catalog archive date (Europe/Vienna)
+the computed snapshot_date / catalog archive date (Europe/Vienna)
 which source file is being downloaded
 which archive filename was created (including whether it was a rerun-suffixed copy)
 whether FTP upload succeeded
@@ -774,10 +767,10 @@ a rerun for a date that already has an archived file produces a
   rerun-suffixed copy, never a silent overwrite
 database loading always reads from the canonical file for that date (the
   latest rerun if one exists, otherwise the base file)
-price_snapshots is loaded via upsert by snapshotDate + idProduct, so
+price_snapshots is loaded via upsert by snapshot_date + id_product, so
   reprocessing a date's canonical file overwrites that date's rows rather
   than creating duplicates or failing
-products is loaded via upsert by idProduct
+products is loaded via upsert by id_product
 ```
 
 This makes manual reruns safer.
@@ -793,7 +786,7 @@ If a scheduled run fails and the workflow is started again manually, it should n
 The `price_snapshots` table should use the logical uniqueness rule:
 
 ```text
-snapshotDate + idProduct
+snapshot_date + id_product
 ```
 
 This prevents duplicate daily price records for the same product. Loading is an upsert against this key, reading from the canonical archive file for that date.
@@ -803,7 +796,7 @@ This prevents duplicate daily price records for the same product. Loading is an 
 The `products` table should use:
 
 ```text
-idProduct
+id_product
 ```
 
 as the primary key.
@@ -872,7 +865,7 @@ The MVP GitHub Actions logic includes:
 
 ```text
 daily scheduled price guide workflow
-twice-monthly scheduled product catalog workflow
+weekly (Friday) scheduled product catalog workflow
 manual workflow trigger support
 Europe/Vienna date computation shared by both workflows
 rerun-suffixed archive files instead of silent overwrites
@@ -943,7 +936,7 @@ product-catalog.yml
 
 The daily workflow is the most important automation in the MVP because it creates the project's historical price dataset.
 
-The twice-monthly workflow keeps product metadata reasonably fresh, and unblocks any collection import rows that were waiting on a not-yet-catalogued product.
+The weekly (Friday) catalog workflow keeps product metadata reasonably fresh, and unblocks any collection import rows that were waiting on a not-yet-catalogued product.
 
 Both workflows compute their working date in the Europe/Vienna timezone explicitly, rather than relying on the runner's default UTC clock.
 

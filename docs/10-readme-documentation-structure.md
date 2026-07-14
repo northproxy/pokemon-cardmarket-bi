@@ -3,9 +3,9 @@
 ## Document Version
 
 ```text
-Version: 0.4
+Version: 0.5
 Status: Draft / MVP design (architecture decisions applied)
-Last updated: 2026-07-04
+Last updated: 2026-07-14
 ```
 
 ## Changelog
@@ -16,6 +16,7 @@ Last updated: 2026-07-04
 | 0.2 | 2026-07-04 | Fixed `01-final-mvp-scope.md` → `01-mvp-scope.md` everywhere, aligned the repository tree with `06-github-repository-structure.md` (single source of truth), synced the MVP analytics signal list with `09-analytics-signal-definitions.md` (removed `sealed_growth`, added `missing_price_data`), added a Known Limitations section referencing `03-data-dictionary.md`, referenced the falsifiable success criteria from `01-mvp-scope.md`, and added this version header, based on architecture review |
 | 0.3 | 2026-07-04 | `06-github-repository-structure.md` added `LICENSE` (MIT) to its tree, so this document's tree now genuinely matches it — closing the drift that existed between the two trees in earlier drafts |
 | 0.4 | 2026-07-05 | Added `11-local-environment-setup.md` to both repo-tree copies, both doc index tables, and the reading order — also caught and fixed both tree copies missing `db/backups/`, which `06` had already added but this document hadn't picked up (the exact kind of drift this doc's tree note warns against) |
+| 0.5 | 2026-07-14 | Renamed field-name references from camelCase to `snake_case` (e.g. `idProduct` → `id_product`, `estimatedMarketValue` → `estimated_market_value`), matching the project-wide database naming decision in `02-data-model.md` v0.5 / `03-data-dictionary.md` v0.5. Only the small number of field mentions in the README draft's prose changed — no CSV/import column headers appear in this document, so nothing here intersects with the camelCase exception documented in `08-collection-import-flow.md`. |
 
 ## Purpose
 
@@ -299,7 +300,7 @@ The project uses official downloadable Cardmarket JSON files for Pokémon:
 Main relationship key:
 
 ```text
-idProduct
+id_product
 ```
 
 Important source rule:
@@ -400,7 +401,7 @@ Recommended README text:
 ```text
 The MVP uses a simple estimated market value formula based on Cardmarket price guide fields:
 
-estimatedMarketValue = (trend + avg30) / 2
+estimated_market_value = (trend + avg30) / 2
 ```
 
 Fallback logic:
@@ -568,7 +569,7 @@ Later:
 Project status: MVP implemented, BI views in progress.
 ```
 
-Once implementation begins, status updates should reference the concrete, falsifiable success criteria defined in `01-mvp-scope.md` (for example: 30 consecutive archived days with no gap, zero duplicate `(snapshotDate, idProduct)` pairs, at least one successful staging import) rather than only a qualitative phase label — this gives "MVP implemented" an actual, checkable meaning instead of being a subjective claim.
+Once implementation begins, status updates should reference the concrete, falsifiable success criteria defined in `01-mvp-scope.md` (for example: 30 consecutive archived days with no gap, zero duplicate `(snapshot_date, id_product)` pairs, at least one successful staging import) rather than only a qualitative phase label — this gives "MVP implemented" an actual, checkable meaning instead of being a subjective claim.
 
 ---
 
@@ -706,7 +707,7 @@ The project uses official downloadable Cardmarket JSON files for Pokémon:
 Main relationship key:
 
 ```text
-idProduct
+id_product
 ````
 
 Important rule:
@@ -747,7 +748,7 @@ Supporting tables:
 The MVP uses a simple estimated market value formula:
 
 ```text
-estimatedMarketValue = (trend + avg30) / 2
+estimated_market_value = (trend + avg30) / 2
 ```
 
 Fallback logic:

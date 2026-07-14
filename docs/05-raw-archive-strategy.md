@@ -3,9 +3,9 @@
 ## Document Version
 
 ```text
-Version: 0.3
+Version: 0.4
 Status: Draft / MVP design (architecture decisions applied)
-Last updated: 2026-07-07
+Last updated: 2026-07-14
 ```
 
 ## Changelog
@@ -14,7 +14,8 @@ Last updated: 2026-07-07
 |---|---|---|
 | 0.1 | 2026-07-04 | Initial raw archive strategy |
 | 0.2 | 2026-07-04 | Resolved immutability/overwrite contradiction with rerun-suffixed files, added archive-gap handling, a reprocessing sketch, an explicit retention policy, and a cross-reference to the ETL doc for the full data quality check list, based on architecture review |
-| 0.3 | 2026-07-07 | Corrected the FTP folder layout from a nested `/raw/cardmarket/pokemon/price_guides/` + `/product_catalogs/` structure to a flat `price_guides/` + `product_catalogs/` structure directly under `FTP_REMOTE_DIR`, to match the actual provisioned and already-tested FTP account — this doc's original tree was written before the account existed and turned out not to match it. Clarified that the rerun-suffix/canonical-file rules in this document describe the **FTP** archive specifically; the local `data/raw/` working copy is a separate, plain-overwrite concern documented in `11-local-environment-setup.md`. |
+| 0.3 | 2026-07-12 | Two corrections made once the FTP account was actually provisioned and the pipeline built, both logged in `DECISIONS.md` in the code repository: (1) folder structure corrected from a nested `/raw/cardmarket/pokemon/...` path (never actually built) to the real flat layout — `price_guides/` and `product_catalogs/` directly under the FTP account root; (2) product catalog cadence changed from twice-monthly (1st/15th) to weekly (every Friday) — a genuine decision change, not an error fix. |
+| 0.4 | 2026-07-14 | Renamed all field-name references from camelCase to `snake_case` (e.g. `idProduct` → `id_product`, `productGroup` → `product_group`), matching the project-wide database naming decision in `02-data-model.md` v0.5 / `03-data-dictionary.md` v0.5. This document only references fields in passing (mostly around `products`/`price_snapshots` enrichment metadata) rather than defining them, so only spelling changed. |
 
 ## Purpose
 
@@ -59,7 +60,7 @@ products_nonsingles_6.json
 
 These files contain product metadata for Pokémon singles and non-single products.
 
-They are downloaded twice per month because product catalog information changes much less frequently than prices. This cadence is a project decision made for storage/processing simplicity, not something Cardmarket requires — see the ETL pipeline design doc for the known limitation this creates around newly released products.
+They are downloaded weekly (every Friday) because product catalog information changes much less frequently than prices, though weekly still keeps metadata reasonably fresh. This cadence is a project decision, not something Cardmarket requires, and was changed from an original twice-monthly (1st/15th) plan to weekly during implementation (see `DECISIONS.md` §11 in the code repository) — see the ETL pipeline design doc for the known limitation this creates around newly released products.
 
 ---
 
@@ -73,19 +74,20 @@ The project does not use deeply nested year/month/day folders in the MVP. A flat
 
 ## Folder Structure
 
-**Corrected in v0.3:** the folder structure is flat, directly under the
-FTP account's configured root (`FTP_REMOTE_DIR`) — not nested under
-`/raw/cardmarket/pokemon/` as earlier drafts of this document described.
-The nested path was written before the FTP account existed; the actual,
-already-provisioned-and-tested account has `price_guides/` and
-`product_catalogs/` directly at its root, with no `raw/cardmarket/pokemon/`
-levels in between.
+**Corrected in v0.3** (see `DECISIONS.md` §3 in the code repository): this
+is the real, already-provisioned flat layout. An earlier draft of this doc
+specified a nested `/raw/cardmarket/pokemon/...` path, written before the
+FTP account existed — that nested path was never actually built. The
+implementation follows the real server layout below.
 
 ```text
 {FTP_REMOTE_DIR}/
   price_guides/
   product_catalogs/
 ```
+
+`FTP_REMOTE_DIR` is the FTP account's configured root path (see
+`.env.example` / GitHub Actions secrets in `06-github-repository-structure.md`).
 
 ### Price guide archive
 
@@ -101,10 +103,10 @@ Filename pattern:
 price_guide_6_YYYY-MM-DD.json
 ```
 
-Example (with `FTP_REMOTE_DIR=/`):
+Example:
 
 ```text
-/price_guides/price_guide_6_2026-07-03.json
+{FTP_REMOTE_DIR}/price_guides/price_guide_6_2026-07-03.json
 ```
 
 ### Product catalog archive
@@ -122,13 +124,13 @@ products_singles_6_YYYY-MM-DD.json
 products_nonsingles_6_YYYY-MM-DD.json
 ```
 
-Examples (with `FTP_REMOTE_DIR=/`):
+Examples (dates reflect the weekly/Friday cadence — see "Download Frequency" below):
 
 ```text
-/product_catalogs/products_singles_6_2026-07-01.json
-/product_catalogs/products_nonsingles_6_2026-07-01.json
-/product_catalogs/products_singles_6_2026-07-15.json
-/product_catalogs/products_nonsingles_6_2026-07-15.json
+{FTP_REMOTE_DIR}/product_catalogs/products_singles_6_2026-07-03.json
+{FTP_REMOTE_DIR}/product_catalogs/products_nonsingles_6_2026-07-03.json
+{FTP_REMOTE_DIR}/product_catalogs/products_singles_6_2026-07-10.json
+{FTP_REMOTE_DIR}/product_catalogs/products_nonsingles_6_2026-07-10.json
 ```
 
 ---
@@ -163,23 +165,20 @@ products_nonsingles_6.json
 Recommended schedule:
 
 ```text
-twice per month
+weekly
 ```
 
-Suggested dates:
+Suggested day:
 
 ```text
-1st day of the month
-15th day of the month
+every Friday
 ```
 
 Reason:
 
-Product metadata does not need to be downloaded every day. New products are added mainly around new product releases, while prices change much more frequently.
+Product metadata does not need to be downloaded every day. New products are added mainly around new product releases, while prices change much more frequently. Weekly was chosen over an original twice-monthly plan during implementation (see `DECISIONS.md` §11 in the code repository) — still far less frequent than the daily price guide, but fresh enough to keep catalog staleness to about a week at worst.
 
-Downloading product catalogs twice per month is enough for the MVP and avoids unnecessary storage and processing.
-
-**If a scheduled catalog run fails or is missed:** the catalog simply remains stale until the next scheduled date, or until it is manually rerun. There is no automatic retry in the MVP — see the ETL pipeline design doc for the full failure-handling rule.
+**If a scheduled catalog run fails or is missed:** the catalog simply remains stale until the next scheduled Friday, or until it is manually rerun. There is no automatic retry in the MVP — see the ETL pipeline design doc for the full failure-handling rule.
 
 ---
 
@@ -375,19 +374,19 @@ avg30-holo    → avg30_holo
 products_singles_6_YYYY-MM-DD.json (canonical)
 products_nonsingles_6_YYYY-MM-DD.json (canonical)
 → validation
-→ productGroup/sourceFile enrichment
+→ product_group/source_file enrichment
 → products
 ```
 
 During loading, the pipeline adds project-specific metadata:
 
 ```text
-productGroup
-sourceFile
-isActiveInCatalog
-firstSeenAt
-lastSeenAt
-updatedAt
+product_group
+source_file
+is_active_in_catalog
+first_seen_at
+last_seen_at
+updated_at
 ```
 
 These fields do not exist in the raw files. They belong to the normalized database layer.
@@ -396,27 +395,27 @@ These fields do not exist in the raw files. They belong to the normalized databa
 
 ## Handling Missing Product Metadata
 
-The price guide is downloaded daily, while product catalogs are downloaded only twice per month.
+The price guide is downloaded daily, while product catalogs are downloaded only weekly (every Friday).
 
-Because of this, the price guide may temporarily contain an `idProduct` that is not yet available in the local `products` table.
+Because of this, the price guide may temporarily contain an `id_product` that is not yet available in the local `products` table.
 
 For this reason, the MVP does not enforce a strict database foreign key from:
 
 ```text
-price_snapshots.idProduct
+price_snapshots.id_product
 ```
 
 to:
 
 ```text
-products.idProduct
+products.id_product
 ```
 
 Instead:
 
 ```text
-products.idProduct is the primary key
-price_snapshots.idProduct is indexed
+products.id_product is the primary key
+price_snapshots.id_product is indexed
 the relationship is documented logically
 data quality checks detect missing products
 ```
@@ -436,7 +435,7 @@ Being able to reprocess history is one of the archive's stated goals, so it dese
 3. Run the current (possibly updated/fixed) validation and transformation
    logic against it.
 4. Upsert the result into the target table (price_snapshots by
-   snapshotDate + idProduct, or products by idProduct).
+   snapshot_date + id_product, or products by id_product).
 5. Run the standard data quality checks against the reprocessed data.
 ```
 
@@ -542,7 +541,7 @@ Retention policy with actual limits, once real growth is observed
 A possible future structure could look like this:
 
 ```text
-{FTP_REMOTE_DIR}/price_guides/year=2026/month=07/
+/raw/cardmarket/pokemon/price_guides/year=2026/month=07/
   price_guide_6_2026-07-03_08-30-00.json
 ```
 

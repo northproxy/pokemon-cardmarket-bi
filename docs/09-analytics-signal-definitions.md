@@ -3,9 +3,9 @@
 ## Document Version
 
 ```text
-Version: 0.2
+Version: 0.3
 Status: Draft / MVP design (architecture decisions applied)
-Last updated: 2026-07-04
+Last updated: 2026-07-14
 ```
 
 ## Changelog
@@ -13,7 +13,8 @@ Last updated: 2026-07-04
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-07-04 | Initial analytics signal definitions |
-| 0.2 | 2026-07-04 | Reconciled `analytics_signals` schema with `02-data-model.md`/`03-data-dictionary.md`, keyed collection-level signals on `collectionItemId`, aligned `new_product` aging tiers with the canonical 14-day reliability flag, added the missing `missing_price_data` MVP signal, deferred `sealed_growth` to Later (matching 02/03), and cross-referenced the signal-specific BI views to the data dictionary's view catalog, based on architecture review |
+| 0.2 | 2026-07-04 | Reconciled `analytics_signals` schema with `02-data-model.md`/`03-data-dictionary.md`, keyed collection-level signals on `collection_item_id`, aligned `new_product` aging tiers with the canonical 14-day reliability flag, added the missing `missing_price_data` MVP signal, deferred `sealed_growth` to Later (matching 02/03), and cross-referenced the signal-specific BI views to the data dictionary's view catalog, based on architecture review |
+| 0.3 | 2026-07-14 | Renamed all field-name references and formula variable names from camelCase to `snake_case` (e.g. `idProduct` → `id_product`, `growthPercent` → `growth_percent`, `previousTrend`/`currentTrend` → `previous_trend`/`current_trend`). Also renamed the local calculation labels `collectionGain`/`collectionLoss` → `collection_gain_amount`/`collection_loss_amount` (and their `*Percent` variants) to avoid confusion with the already-`snake_case` `signal_type` enum values `collection_gain`/`collection_loss`, which are unchanged. Matches the project-wide database naming decision in `02-data-model.md` v0.5 / `03-data-dictionary.md` v0.5. |
 
 ## Purpose
 
@@ -74,18 +75,18 @@ analytics_signals
 The canonical schema for this table lives in `02-data-model.md` and `03-data-dictionary.md`; it is repeated here for convenience only, and this document should not be treated as an independent source of truth for the table's structure.
 
 ```text
-signalId
-signalDate
-idProduct
-collectionItemId
-signalType
-signalValue
-signalStrength
-lookbackDays
-referenceValue
-currentValue
-signalDescription
-createdAt
+signal_id
+signal_date
+id_product
+collection_item_id
+signal_type
+signal_value
+signal_strength
+lookback_days
+reference_value
+current_value
+signal_description
+created_at
 ```
 
 ---
@@ -94,26 +95,26 @@ createdAt
 
 | Field               | Description                                                                                      |
 | ------------------- | -------------------------------------------------------------------------------------------------- |
-| `signalId`          | Unique technical ID of the signal                                                                 |
-| `signalDate`        | Date when the signal was calculated                                                               |
-| `idProduct`         | Cardmarket product ID. Nullable for collection-only signals. Populated alongside `collectionItemId` on collection-level signals, for convenient joins. |
-| `collectionItemId`  | Specific physical collection item, when the signal is collection-level. **Required** for `collection_gain`/`collection_loss` — see "Why Collection Signals Key on `collectionItemId`" below. |
-| `signalType`        | Type of signal, for example `growth` or `price_spike`                                             |
-| `signalValue`       | Main numeric value of the signal                                                                  |
-| `signalStrength`    | Simple category such as `low`, `medium`, `high`                                                   |
-| `lookbackDays`      | Historical window used for the calculation, when the signal has one (null otherwise — see `price_spike`) |
-| `referenceValue`    | Previous / comparison value                                                                       |
-| `currentValue`      | Current value used for comparison                                                                 |
-| `signalDescription` | Human-readable explanation                                                                        |
-| `createdAt`         | Timestamp when the signal was created                                                             |
+| `signal_id`          | Unique technical ID of the signal                                                                 |
+| `signal_date`        | Date when the signal was calculated                                                               |
+| `id_product`         | Cardmarket product ID. Nullable for collection-only signals. Populated alongside `collection_item_id` on collection-level signals, for convenient joins. |
+| `collection_item_id`  | Specific physical collection item, when the signal is collection-level. **Required** for `collection_gain`/`collection_loss` — see "Why Collection Signals Key on `collection_item_id`" below. |
+| `signal_type`        | Type of signal, for example `growth` or `price_spike`                                             |
+| `signal_value`       | Main numeric value of the signal                                                                  |
+| `signal_strength`    | Simple category such as `low`, `medium`, `high`                                                   |
+| `lookback_days`      | Historical window used for the calculation, when the signal has one (null otherwise — see `price_spike`) |
+| `reference_value`    | Previous / comparison value                                                                       |
+| `current_value`      | Current value used for comparison                                                                 |
+| `signal_description` | Human-readable explanation                                                                        |
+| `created_at`         | Timestamp when the signal was created                                                             |
 
 ---
 
-## Why Collection Signals Key on `collectionItemId`
+## Why Collection Signals Key on `collection_item_id`
 
-`collection_gain` and `collection_loss` describe a *specific physical item's* change in value relative to what was paid for it. Since `purchasePrice` lives on `collection_items`, not `products`, and two copies of the exact same card can have different purchase prices, a signal keyed only on `idProduct` cannot distinguish "copy A gained value" from "copy B, bought later at a different price, did not." Every `collection_gain`/`collection_loss` row must set `collectionItemId`. `idProduct` should still be populated on the same row so product-level rollups (e.g. "total gain across all Pikachu copies") don't require an extra join.
+`collection_gain` and `collection_loss` describe a *specific physical item's* change in value relative to what was paid for it. Since `purchase_price` lives on `collection_items`, not `products`, and two copies of the exact same card can have different purchase prices, a signal keyed only on `id_product` cannot distinguish "copy A gained value" from "copy B, bought later at a different price, did not." Every `collection_gain`/`collection_loss` row must set `collection_item_id`. `id_product` should still be populated on the same row so product-level rollups (e.g. "total gain across all Pikachu copies") don't require an extra join.
 
-Product-level signals (`growth`, `price_spike`, `new_product`, `missing_price_data`) key on `idProduct` and leave `collectionItemId` null, since they describe the market, not a specific owned copy.
+Product-level signals (`growth`, `price_spike`, `new_product`, `missing_price_data`) key on `id_product` and leave `collection_item_id` null, since they describe the market, not a specific owned copy.
 
 ---
 
@@ -172,14 +173,14 @@ Use the estimated market value or `trend` price.
 For a simple MVP version:
 
 ```text
-growthPercent = ((currentTrend - previousTrend) / previousTrend) * 100
+growth_percent = ((current_trend - previous_trend) / previous_trend) * 100
 ```
 
 Where:
 
 ```text
-currentTrend = latest trend value
-previousTrend = trend value from N days ago
+current_trend = latest trend value
+previous_trend = trend value from N days ago
 ```
 
 Recommended MVP lookback windows:
@@ -190,21 +191,21 @@ Recommended MVP lookback windows:
 90 days
 ```
 
-`lookbackDays` on the stored signal row records which window (7, 30, or 90) was used.
+`lookback_days` on the stored signal row records which window (7, 30, or 90) was used.
 
 ---
 
 ## Example
 
 ```text
-previousTrend = 10.00
-currentTrend = 13.00
+previous_trend = 10.00
+current_trend = 13.00
 
-growthPercent = ((13.00 - 10.00) / 10.00) * 100
-growthPercent = 30%
+growth_percent = ((13.00 - 10.00) / 10.00) * 100
+growth_percent = 30%
 ```
 
-Stored as: `referenceValue = 10.00`, `currentValue = 13.00`, `signalValue = 30.00`, `lookbackDays = 30`.
+Stored as: `reference_value = 10.00`, `current_value = 13.00`, `signal_value = 30.00`, `lookback_days = 30`.
 
 ---
 
@@ -224,7 +225,7 @@ These thresholds are simple starting values, not statistically derived, and can 
 
 The growth signal should ignore products where the previous value is missing or zero.
 
-**New-product suppression:** this signal uses the same 14-day `isNewProduct` reliability flag defined in `02-data-model.md`/`03-data-dictionary.md` (`priceAgeDays = snapshotDate - products.firstSeenAt`, `isNewProduct = priceAgeDays < 14`). While `isNewProduct` is true for a product, a `growth` signal should either be suppressed entirely or explicitly marked as low-confidence in its `signalDescription` — early price swings for a brand-new product are not comparable to genuine market movement for an established one. This is the same rule referenced by the `new_product` signal below; there is only one 14-day aging concept in this project, not two.
+**New-product suppression:** this signal uses the same 14-day `is_new_product` reliability flag defined in `02-data-model.md`/`03-data-dictionary.md` (`price_age_days = snapshot_date - products.first_seen_at`, `is_new_product = price_age_days < 14`). While `is_new_product` is true for a product, a `growth` signal should either be suppressed entirely or explicitly marked as low-confidence in its `signal_description` — early price swings for a brand-new product are not comparable to genuine market movement for an established one. This is the same rule referenced by the `new_product` signal below; there is only one 14-day aging concept in this project, not two.
 
 ---
 
@@ -251,7 +252,7 @@ Which products suddenly became more expensive compared to their recent average?
 Compare the latest `trend` price with the 30-day average:
 
 ```text
-priceSpikePercent = ((trend - avg30) / avg30) * 100
+price_spike_percent = ((trend - avg30) / avg30) * 100
 ```
 
 Where:
@@ -261,7 +262,7 @@ trend = latest trend price
 avg30 = latest 30-day average price from Cardmarket
 ```
 
-`lookbackDays` should be stored as **null** for this signal — unlike `growth`, there is no freely chosen window here; `avg30` is a fixed Cardmarket-provided field, not a lookback this project selects. An earlier draft of this document populated `lookbackDays = 30` for this signal by analogy with `growth`, which conflated "the field is named avg30" with "we chose a 30-day window," and has been corrected here.
+`lookback_days` should be stored as **null** for this signal — unlike `growth`, there is no freely chosen window here; `avg30` is a fixed Cardmarket-provided field, not a lookback this project selects. An earlier draft of this document populated `lookback_days = 30` for this signal by analogy with `growth`, which conflated "the field is named avg30" with "we chose a 30-day window," and has been corrected here.
 
 ---
 
@@ -271,11 +272,11 @@ avg30 = latest 30-day average price from Cardmarket
 trend = 20.00
 avg30 = 15.00
 
-priceSpikePercent = ((20.00 - 15.00) / 15.00) * 100
-priceSpikePercent = 33.33%
+price_spike_percent = ((20.00 - 15.00) / 15.00) * 100
+price_spike_percent = 33.33%
 ```
 
-Stored as: `referenceValue = 15.00`, `currentValue = 20.00`, `signalValue = 33.33`, `lookbackDays = null`.
+Stored as: `reference_value = 15.00`, `current_value = 20.00`, `signal_value = 33.33`, `lookback_days = null`.
 
 ---
 
@@ -305,7 +306,7 @@ unstable pricing for a new product
 
 The signal should not automatically mean "buy".
 
-**New-product suppression:** applies here exactly as described for `growth` above — a product where `isNewProduct` is true should have its `price_spike` signal suppressed or explicitly flagged as low-confidence, since `avg30` itself is not yet meaningful for a product with under 14 days of history.
+**New-product suppression:** applies here exactly as described for `growth` above — a product where `is_new_product` is true should have its `price_spike` signal suppressed or explicitly flagged as low-confidence, since `avg30` itself is not yet meaningful for a product with under 14 days of history.
 
 ---
 
@@ -315,7 +316,7 @@ The signal should not automatically mean "buy".
 
 The `new_product` signal identifies products that recently appeared in the local catalog or price guide.
 
-This is useful because newly released Pokémon products often have unstable early prices, and because it gives a single, discrete event marking when a product first became trackable — rather than requiring every consumer to compute `firstSeenAt` age themselves.
+This is useful because newly released Pokémon products often have unstable early prices, and because it gives a single, discrete event marking when a product first became trackable — rather than requiring every consumer to compute `first_seen_at` age themselves.
 
 ---
 
@@ -332,10 +333,10 @@ Which products appeared recently and should be monitored?
 A product is considered for this signal based on one criterion only:
 
 ```text
-priceAgeDays = signalDate - products.firstSeenAt
+price_age_days = signal_date - products.first_seen_at
 ```
 
-This is the same `firstSeenAt`-based calculation used for the canonical `isNewProduct` reliability flag (see `02-data-model.md`). An earlier draft of this document also allowed a second, vaguer criterion ("appears in price_snapshots but has only a short local price history") — that has been dropped in favor of a single, well-defined measure.
+This is the same `first_seen_at`-based calculation used for the canonical `is_new_product` reliability flag (see `02-data-model.md`). An earlier draft of this document also allowed a second, vaguer criterion ("appears in price_snapshots but has only a short local price history") — that has been dropped in favor of a single, well-defined measure.
 
 ---
 
@@ -344,10 +345,10 @@ This is the same `firstSeenAt`-based calculation used for the canonical `isNewPr
 Aligned with the canonical 14-day reliability boundary, rather than an independently chosen scale:
 
 ```text
-high   = priceAgeDays <= 3   (very new, most unstable)
-medium = priceAgeDays <= 14  (isNewProduct is true — matches the canonical
+high   = price_age_days <= 3   (very new, most unstable)
+medium = price_age_days <= 14  (is_new_product is true — matches the canonical
                                growth/price_spike suppression boundary)
-low    = priceAgeDays <= 30  (recently added, no longer flagged unstable
+low    = price_age_days <= 30  (recently added, no longer flagged unstable
                                elsewhere, but still worth surfacing)
 ```
 
@@ -368,7 +369,7 @@ supply may not be stable yet
 catalog data may lag behind price guide data
 ```
 
-This signal is especially useful for separating real long-term growth from release-window volatility, and its `medium`/`high` tiers correspond directly to when `isNewProduct` is true elsewhere in the system — so a BI view can cross-reference "is this product flagged as new" and "is this product's growth/spike signal suppressed" using the same 14-day boundary.
+This signal is especially useful for separating real long-term growth from release-window volatility, and its `medium`/`high` tiers correspond directly to when `is_new_product` is true elsewhere in the system — so a BI view can cross-reference "is this product flagged as new" and "is this product's growth/spike signal suppressed" using the same 14-day boundary.
 
 ---
 
@@ -395,36 +396,36 @@ Which items in my collection are currently worth more than I paid?
 Use the existing estimated market value formula:
 
 ```text
-estimatedMarketValue = (trend + avg30) / 2
+estimated_market_value = (trend + avg30) / 2
 ```
 
-Then compare it to the item's `purchasePrice`:
+Then compare it to the item's `purchase_price`:
 
 ```text
-collectionGain = estimatedMarketValue - purchasePrice
+collection_gain_amount = estimated_market_value - purchase_price
 ```
 
 Percentage gain:
 
 ```text
-collectionGainPercent = ((estimatedMarketValue - purchasePrice) / purchasePrice) * 100
+collection_gain_percent = ((estimated_market_value - purchase_price) / purchase_price) * 100
 ```
 
-This signal is calculated **per `collectionItemId`**, not per `idProduct` — see "Why Collection Signals Key on `collectionItemId`" above. Two copies of the same card with different purchase prices produce two separate `collection_gain` (or one gain, one loss) signal rows.
+This signal is calculated **per `collection_item_id`**, not per `id_product` — see "Why Collection Signals Key on `collection_item_id`" above. Two copies of the same card with different purchase prices produce two separate `collection_gain` (or one gain, one loss) signal rows.
 
 ---
 
 ## Example
 
 ```text
-purchasePrice = 20.00
-estimatedMarketValue = 30.00
+purchase_price = 20.00
+estimated_market_value = 30.00
 
-collectionGain = 10.00
-collectionGainPercent = 50%
+collection_gain_amount = 10.00
+collection_gain_percent = 50%
 ```
 
-Stored as: `collectionItemId = <the specific item>`, `idProduct = <its product, for convenience>`, `referenceValue = 20.00`, `currentValue = 30.00`, `signalValue = 10.00`.
+Stored as: `collection_item_id = <the specific item>`, `id_product = <its product, for convenience>`, `reference_value = 20.00`, `current_value = 30.00`, `signal_value = 10.00`.
 
 ---
 
@@ -440,12 +441,12 @@ high = more than 40% gain
 
 ## MVP Notes
 
-This signal only works when `purchasePrice` is known.
+This signal only works when `purchase_price` is known.
 
 For pulled cards, purchase price may be empty or difficult to calculate.
 In that case, the item can still have an estimated market value, but not a real gain/loss calculation, and no `collection_gain`/`collection_loss` signal should be generated for it.
 
-An item does not generate both a `collection_gain` and a `collection_loss` signal on the same `signalDate` — the sign of `estimatedMarketValue - purchasePrice` determines which one (if either) applies. An item exactly at breakeven generates neither.
+An item does not generate both a `collection_gain` and a `collection_loss` signal on the same `signal_date` — the sign of `estimated_market_value - purchase_price` determines which one (if either) applies. An item exactly at breakeven generates neither.
 
 ---
 
@@ -470,30 +471,30 @@ Which items in my collection are currently below purchase price?
 ## Suggested MVP Calculation
 
 ```text
-collectionLoss = purchasePrice - estimatedMarketValue
+collection_loss_amount = purchase_price - estimated_market_value
 ```
 
 Percentage loss:
 
 ```text
-collectionLossPercent = ((purchasePrice - estimatedMarketValue) / purchasePrice) * 100
+collection_loss_percent = ((purchase_price - estimated_market_value) / purchase_price) * 100
 ```
 
-As with `collection_gain`, this signal is calculated **per `collectionItemId`**, not per `idProduct`.
+As with `collection_gain`, this signal is calculated **per `collection_item_id`**, not per `id_product`.
 
 ---
 
 ## Example
 
 ```text
-purchasePrice = 40.00
-estimatedMarketValue = 30.00
+purchase_price = 40.00
+estimated_market_value = 30.00
 
-collectionLoss = 10.00
-collectionLossPercent = 25%
+collection_loss_amount = 10.00
+collection_loss_percent = 25%
 ```
 
-Stored as: `collectionItemId = <the specific item>`, `idProduct = <its product, for convenience>`, `referenceValue = 40.00`, `currentValue = 30.00`, `signalValue = 10.00`.
+Stored as: `collection_item_id = <the specific item>`, `id_product = <its product, for convenience>`, `reference_value = 40.00`, `current_value = 30.00`, `signal_value = 10.00`.
 
 ---
 
@@ -537,7 +538,7 @@ The `missing_price_data` signal flags a product that exists in the local catalog
 vw_products_without_prices  = "which products currently lack price data,
                                right now" — always reflects the live state
 missing_price_data signal   = "this product was missing price data as of
-                               this specific signalDate" — a permanent,
+                               this specific signal_date" — a permanent,
                                dated record, useful for tracking how long a
                                gap has persisted or when it started/resolved
 ```
@@ -550,7 +551,7 @@ Which catalog products still don't have usable price data, and since when?
 
 ## Suggested MVP Calculation
 
-No percentage or comparison value applies here. `signalValue`, `referenceValue`, and `currentValue` are null for this signal type; `signalDescription` carries the explanation (e.g. "No trend or avg30 price available as of this date").
+No percentage or comparison value applies here. `signal_value`, `reference_value`, and `current_value` are null for this signal type; `signal_description` carries the explanation (e.g. "No trend or avg30 price available as of this date").
 
 ## Suggested Signal Strength
 
@@ -560,7 +561,7 @@ medium = missing for 14 to 30 days
 high   = missing for more than 30 days
 ```
 
-Strength here reflects how long the gap has persisted, which is meaningfully different from "how new is this product" — a product can be old and still lack price data (e.g. very low market activity), so this scale is independent of the 14-day `isNewProduct` flag even though it reuses 14 as a convenient first boundary.
+Strength here reflects how long the gap has persisted, which is meaningfully different from "how new is this product" — a product can be old and still lack price data (e.g. very low market activity), so this scale is independent of the 14-day `is_new_product` flag even though it reuses 14 as a convenient first boundary.
 
 ## MVP Notes
 
@@ -587,17 +588,17 @@ Meaningfully separating sealed products from singles benefits from having enough
 Once enough history exists, the same logic as the general `growth` signal, restricted to:
 
 ```text
-productGroup = non_single
+product_group = non_single
 ```
 
 or, for collection items:
 
 ```text
-isSealed = true
+is_sealed = true
 ```
 
 ```text
-sealedGrowthPercent = ((currentTrend - previousTrend) / previousTrend) * 100
+sealed_growth_percent = ((current_trend - previous_trend) / previous_trend) * 100
 ```
 
 using the same strength tiers as `growth` (5-10% low, 10-25% medium, >25% high) as a starting point.
@@ -679,7 +680,7 @@ For this reason, it belongs to a later analytics stage, not the MVP.
 
 # Suggested Signal Types
 
-The following values can be used in `analytics_signals.signalType`:
+The following values can be used in `analytics_signals.signal_type`:
 
 ```text
 growth
@@ -745,10 +746,10 @@ required price fields are not null (for price-based signals)
 comparison value is not zero
 product has enough price history, or the signal type (missing_price_data,
   new_product) is specifically designed to handle sparse history
-idProduct exists, or collectionItemId exists for collection-level signals
+id_product exists, or collection_item_id exists for collection-level signals
 new products are handled separately (see New-Product Suppression under
   growth and price_spike)
-collection-level signals use collectionItemId, not just idProduct
+collection-level signals use collection_item_id, not just id_product
 ```
 
 ---
@@ -759,11 +760,11 @@ Recommended minimum history:
 
 | Signal                      | Minimum History                                          |
 | ---------------------------- | --------------------------------------------------------- |
-| `growth`                     | 7 days for short-term growth; suppressed while isNewProduct |
-| `price_spike`                | current snapshot with `trend` and `avg30`; suppressed while isNewProduct |
-| `new_product`                | product `firstSeenAt` (no price history needed)          |
-| `collection_gain`            | latest price + `purchasePrice` on the specific collection item |
-| `collection_loss`            | latest price + `purchasePrice` on the specific collection item |
+| `growth`                     | 7 days for short-term growth; suppressed while is_new_product |
+| `price_spike`                | current snapshot with `trend` and `avg30`; suppressed while is_new_product |
+| `new_product`                | product `first_seen_at` (no price history needed)          |
+| `collection_gain`            | latest price + `purchase_price` on the specific collection item |
+| `collection_loss`            | latest price + `purchase_price` on the specific collection item |
 | `missing_price_data`         | at least one completed daily pipeline cycle since the product was catalogued |
 | `sealed_growth`              | later only — same as `growth`, once promoted from deferred |
 | `potential_buy_opportunity`  | 90+ days, later only                                     |
@@ -797,16 +798,16 @@ These views can later feed dashboards, reports, or a small web app.
 ## Growth Signal
 
 ```text
-signalDate: 2026-07-04
-idProduct: 12345
-collectionItemId: null
-signalType: growth
-signalValue: 30.00
-signalStrength: high
-lookbackDays: 30
-referenceValue: 10.00
-currentValue: 13.00
-signalDescription: Product increased by 30% over the last 30 days.
+signal_date: 2026-07-04
+id_product: 12345
+collection_item_id: null
+signal_type: growth
+signal_value: 30.00
+signal_strength: high
+lookback_days: 30
+reference_value: 10.00
+current_value: 13.00
+signal_description: Product increased by 30% over the last 30 days.
 ```
 
 ---
@@ -814,16 +815,16 @@ signalDescription: Product increased by 30% over the last 30 days.
 ## Price Spike Signal
 
 ```text
-signalDate: 2026-07-04
-idProduct: 67890
-collectionItemId: null
-signalType: price_spike
-signalValue: 33.33
-signalStrength: medium
-lookbackDays: null
-referenceValue: 15.00
-currentValue: 20.00
-signalDescription: Current trend price is 33.33% above avg30.
+signal_date: 2026-07-04
+id_product: 67890
+collection_item_id: null
+signal_type: price_spike
+signal_value: 33.33
+signal_strength: medium
+lookback_days: null
+reference_value: 15.00
+current_value: 20.00
+signal_description: Current trend price is 33.33% above avg30.
 ```
 
 ---
@@ -831,19 +832,19 @@ signalDescription: Current trend price is 33.33% above avg30.
 ## Collection Gain Signal
 
 ```text
-signalDate: 2026-07-04
-idProduct: 55555
-collectionItemId: 8a1e2f90-...
-signalType: collection_gain
-signalValue: 10.00
-signalStrength: high
-lookbackDays: null
-referenceValue: 20.00
-currentValue: 30.00
-signalDescription: This collection item is currently estimated 10.00 EUR above its purchase price.
+signal_date: 2026-07-04
+id_product: 55555
+collection_item_id: 8a1e2f90-...
+signal_type: collection_gain
+signal_value: 10.00
+signal_strength: high
+lookback_days: null
+reference_value: 20.00
+current_value: 30.00
+signal_description: This collection item is currently estimated 10.00 EUR above its purchase price.
 ```
 
-Note `collectionItemId` is now populated on this example, unlike the earlier draft — this is the field that actually identifies which physical copy the signal describes.
+Note `collection_item_id` is now populated on this example, unlike the earlier draft — this is the field that actually identifies which physical copy the signal describes.
 
 ---
 

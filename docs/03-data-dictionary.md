@@ -3,9 +3,9 @@
 ## Document Version
 
 ```text
-Version: 0.4
+Version: 0.5
 Status: Draft / MVP design (architecture decisions applied)
-Last updated: 2026-07-04
+Last updated: 2026-07-14
 ```
 
 ## Changelog
@@ -13,9 +13,10 @@ Last updated: 2026-07-04
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-07-04 | Initial data dictionary |
-| 0.2 | 2026-07-04 | Resolved `grade` type, timezone hedging language, `idCategory` reconciliation, `updatedAt` triggers, `waiting_for_product` status, `vw_collection_summary` tie-break rule, and expanded Known Data Limitations based on architecture review |
-| 0.3 | 2026-07-04 | Extended `analytics_signals` with `signalStrength`, `lookbackDays`, `referenceValue`, `currentValue`; clarified `collectionItemId` keying for collection-level signals; deferred `sealed_growth` to Later Signal Types, based on architecture review of `09-analytics-signal-definitions.md` |
-| 0.4 | 2026-07-04 | Added missing `storageLocation`/`personalNote` fields to `collection_import_staging`; clarified `sourceCreatedAt` as an alias for download time in the MVP; specified `matchConfidence = 0.00` (not `null`) as the value to store when matching was attempted but found no confident match, reserving `null` for rows the matcher hasn't processed yet |
+| 0.2 | 2026-07-04 | Resolved `grade` type, timezone hedging language, `id_category` reconciliation, `updated_at` triggers, `waiting_for_product` status, `vw_collection_summary` tie-break rule, and expanded Known Data Limitations based on architecture review |
+| 0.3 | 2026-07-04 | Extended `analytics_signals` with `signal_strength`, `lookback_days`, `reference_value`, `current_value`; clarified `collection_item_id` keying for collection-level signals; deferred `sealed_growth` to Later Signal Types, based on architecture review of `09-analytics-signal-definitions.md` |
+| 0.4 | 2026-07-04 | Added missing `storage_location`/`personal_note` fields to `collection_import_staging`; clarified `source_created_at` as an alias for download time in the MVP; specified `match_confidence = 0.00` (not `null`) as the value to store when matching was attempted but found no confident match, reserving `null` for rows the matcher hasn't processed yet |
+| 0.5 | 2026-07-14 | Renamed every field in every table from camelCase to `snake_case` (e.g. `idProduct` → `id_product`), settling the convention this document's own "Naming Conventions" section already claimed (`snake_case`) but the field lists throughout the rest of the document hadn't actually followed until now — that mismatch predates this rewrite and is fixed here. Rewrote the Naming Conventions section itself for clarity. CSV/Excel import column headers (`08-collection-import-flow.md`) explicitly keep camelCase and are not affected. |
 
 ## Overview
 
@@ -29,16 +30,42 @@ The dictionary is intended to make the project understandable for GitHub reviewe
 
 ## Naming Conventions
 
-Database fields use `snake_case` where possible.
+Database fields use `snake_case`, without exception. This is a deliberate
+Postgres-idiomatic choice (see `DECISIONS.md` in the code repository): an
+unquoted camelCase identifier like `idProduct` would be silently folded to
+`idproduct` by Postgres unless quoted everywhere, in every query, forever —
+`snake_case` avoids that entirely and is the standard convention for
+Postgres schemas.
 
-Some Cardmarket source fields use camelCase or hyphenated names. During normalization, these fields are converted into database-friendly names.
+**Earlier drafts of this document (through v0.4) said "snake_case where
+possible" and then listed fields like `idProduct` as the example — an
+internal contradiction that predates this note. As of v0.5, that's
+resolved: every field, in every table, is `snake_case`, no exceptions.**
+
+Cardmarket's own source JSON uses camelCase field names (`idProduct`,
+`idCategory`, `idExpansion`, `idMetacard`) and hyphenated price fields
+(`avg-holo`, `trend-holo`, etc.). During normalization, all of these are
+converted to `snake_case` database columns. Traceability to the source is
+kept through the *name itself* (e.g. `id_product` is still obviously "the
+same field as Cardmarket's `idProduct`"), not through preserving the
+source's literal casing.
 
 Examples:
 
 ```text
-idProduct is kept as idProduct because it is the official Cardmarket product identifier.
-idCategory, idExpansion, and idMetacard are also kept close to the source naming for traceability.
+Cardmarket source field   →  database column
+idProduct                 →  id_product
+idCategory                 →  id_category
+idExpansion                →  id_expansion
+idMetacard                  →  id_metacard
 ```
+
+**Exception — CSV/Excel collection import column headers stay camelCase.**
+These are user-facing input files, not database objects, so they don't
+follow the database naming convention above. See
+`08-collection-import-flow.md`'s Naming Convention Note for the explicit
+mapping between import column headers and the `collection_import_staging`
+columns they load into.
 
 Hyphenated price guide fields are converted to snake_case:
 
@@ -76,30 +103,30 @@ One row represents one Cardmarket product.
 
 | Field | Type | Nullable | Source | Description |
 |---|---|---|---|---|
-| `idProduct` | integer / bigint | No | Cardmarket | Official Cardmarket product ID. Main key used to connect products with price data and collection items. |
+| `id_product` | integer / bigint | No | Cardmarket | Official Cardmarket product ID. Main key used to connect products with price data and collection items. |
 | `name` | text | No | Cardmarket | Product name from the official catalog file. |
-| `idCategory` | integer / bigint | Yes | Cardmarket | Cardmarket category ID as of the last catalog refresh. See "idCategory Reconciliation" below for how this relates to the category value stored per price snapshot. |
-| `categoryName` | text | Yes | Cardmarket | Human-readable category name. |
-| `idExpansion` | integer / bigint | Yes | Cardmarket | Cardmarket expansion/set ID. Useful for expansion-level analysis. |
-| `idMetacard` | integer / bigint | Yes | Cardmarket | Cardmarket metacard ID, mainly relevant for singles. May be missing for non-single products. |
-| `dateAdded` | date / timestamp | Yes | Cardmarket | Date when the product was added to the Cardmarket catalog, if provided. |
-| `productGroup` | text | No | Derived | Identifies whether the row comes from the singles or non-singles catalog. |
-| `sourceFile` | text | No | Derived | Original source file used for this product row. |
-| `isActiveInCatalog` | boolean | No | Derived | Whether the product still appears in the latest downloaded catalog. Set to false the first time a product is missing from a freshly downloaded catalog file (no grace period in MVP). Never causes deletion. |
-| `firstSeenAt` | timestamp | No | Derived | First time this project saw the product in a downloaded catalog. Used to compute product "age" for the new-product reliability flag (see `analytics_signals`). |
-| `lastSeenAt` | timestamp | No | Derived | Most recent time this project saw the product in a downloaded catalog. |
-| `updatedAt` | timestamp | No | System | Last time the product row was updated in the project database. **Changes on any stored field change, including `lastSeenAt`** — meaning it changes on essentially every catalog run that sees the product again, not only when a business field (name, category, etc.) changes. Do not use this field to infer "a meaningful attribute changed"; it means "the pipeline touched this row." |
+| `id_category` | integer / bigint | Yes | Cardmarket | Cardmarket category ID as of the last catalog refresh. See "id_category Reconciliation" below for how this relates to the category value stored per price snapshot. |
+| `category_name` | text | Yes | Cardmarket | Human-readable category name. |
+| `id_expansion` | integer / bigint | Yes | Cardmarket | Cardmarket expansion/set ID. Useful for expansion-level analysis. |
+| `id_metacard` | integer / bigint | Yes | Cardmarket | Cardmarket metacard ID, mainly relevant for singles. May be missing for non-single products. |
+| `date_added` | date / timestamp | Yes | Cardmarket | Date when the product was added to the Cardmarket catalog, if provided. |
+| `product_group` | text | No | Derived | Identifies whether the row comes from the singles or non-singles catalog. |
+| `source_file` | text | No | Derived | Original source file used for this product row. |
+| `is_active_in_catalog` | boolean | No | Derived | Whether the product still appears in the latest downloaded catalog. Set to false the first time a product is missing from a freshly downloaded catalog file (no grace period in MVP). Never causes deletion. |
+| `first_seen_at` | timestamp | No | Derived | First time this project saw the product in a downloaded catalog. Used to compute product "age" for the new-product reliability flag (see `analytics_signals`). |
+| `last_seen_at` | timestamp | No | Derived | Most recent time this project saw the product in a downloaded catalog. |
+| `updated_at` | timestamp | No | System | Last time the product row was updated in the project database. **Changes on any stored field change, including `last_seen_at`** — meaning it changes on essentially every catalog run that sees the product again, not only when a business field (name, category, etc.) changes. Do not use this field to infer "a meaningful attribute changed"; it means "the pipeline touched this row." |
 
 ## Allowed Values
 
-### `productGroup`
+### `product_group`
 
 ```text
 single
 non_single
 ```
 
-### `sourceFile`
+### `source_file`
 
 ```text
 products_singles_6.json
@@ -109,17 +136,17 @@ products_nonsingles_6.json
 ## Primary Key
 
 ```text
-idProduct
+id_product
 ```
 
 ## Business Rules
 
 ```text
-idProduct must be unique.
+id_product must be unique.
 A product should not be deleted only because it disappears from the latest catalog.
-If a product disappears from the latest catalog, set isActiveInCatalog = false.
-Products from singles must get productGroup = single.
-Products from non-singles must get productGroup = non_single.
+If a product disappears from the latest catalog, set is_active_in_catalog = false.
+Products from singles must get product_group = single.
+Products from non-singles must get product_group = non_single.
 Historical price_snapshots and collection_items referencing an inactive
   product remain valid and are not hidden or excluded from BI views.
 ```
@@ -140,10 +167,10 @@ This table creates historical price data over time.
 
 | Field | Type | Nullable | Source | Description |
 |---|---|---|---|---|
-| `snapshotDate` | date | No | Derived | Date assigned to the daily price snapshot: the pipeline run date in the Europe/Vienna timezone. This rule applies to every run, including manual reruns and backfills — there is no separate rule for exceptional cases. |
-| `sourceCreatedAt` | timestamp | Yes | System | Alias for the pipeline's download timestamp for this file. Cardmarket's source files don't carry a usable file-level timestamp of their own, so in the MVP this field always reflects when the project downloaded the file, not a source-provided value. |
-| `idProduct` | integer / bigint | No | Cardmarket | Product ID from the price guide. Connects logically to `products.idProduct`. |
-| `idCategory` | integer / bigint | Yes | Cardmarket | Category ID as reported in this specific daily price guide snapshot (source-observed, point-in-time). See "idCategory Reconciliation" below. |
+| `snapshot_date` | date | No | Derived | Date assigned to the daily price snapshot: the pipeline run date in the Europe/Vienna timezone. This rule applies to every run, including manual reruns and backfills — there is no separate rule for exceptional cases. |
+| `source_created_at` | timestamp | Yes | System | Alias for the pipeline's download timestamp for this file. Cardmarket's source files don't carry a usable file-level timestamp of their own, so in the MVP this field always reflects when the project downloaded the file, not a source-provided value. |
+| `id_product` | integer / bigint | No | Cardmarket | Product ID from the price guide. Connects logically to `products.id_product`. |
+| `id_category` | integer / bigint | Yes | Cardmarket | Category ID as reported in this specific daily price guide snapshot (source-observed, point-in-time). See "id_category Reconciliation" below. |
 | `avg` | decimal | Yes | Cardmarket | Average price value from the price guide. |
 | `low` | decimal | Yes | Cardmarket | Lowest listed price from the price guide. Can be noisy and should not be the main valuation field. |
 | `trend` | decimal | Yes | Cardmarket | Trend price from the price guide. Used in estimated value logic. |
@@ -156,19 +183,19 @@ This table creates historical price data over time.
 | `avg1_holo` | decimal | Yes | Cardmarket | Normalized version of `avg1-holo`. |
 | `avg7_holo` | decimal | Yes | Cardmarket | Normalized version of `avg7-holo`. |
 | `avg30_holo` | decimal | Yes | Cardmarket | Normalized version of `avg30-holo`. |
-| `createdAt` | timestamp | No | System | Time when the snapshot row was inserted into the project database. |
+| `created_at` | timestamp | No | System | Time when the snapshot row was inserted into the project database. |
 
 ## Primary Key
 
 Composite key:
 
 ```text
-(snapshotDate, idProduct)
+(snapshot_date, id_product)
 ```
 
 ## Relationship
 
-For MVP, `price_snapshots.idProduct` is an indexed logical relationship to `products.idProduct`.
+For MVP, `price_snapshots.id_product` is an indexed logical relationship to `products.id_product`.
 
 A strict foreign key can be added later after source synchronization behavior is observed.
 
@@ -180,11 +207,11 @@ Price guides are downloaded daily.
 A new product can appear in the price guide before the local product catalog is refreshed.
 ```
 
-## `idCategory` Reconciliation
+## `id_category` Reconciliation
 
 ```text
-products.idCategory        = catalog category, as of the last catalog refresh
-price_snapshots.idCategory = category as reported in that specific daily price
+products.id_category        = catalog category, as of the last catalog refresh
+price_snapshots.id_category = category as reported in that specific daily price
                               guide snapshot (source-observed, point-in-time)
 
 This is intentional duplication, not redundant normalization debt. The price
@@ -192,8 +219,8 @@ guide reports its own category value independently of the product catalog,
 and the two can drift.
 
 Reconciliation rule (data quality warning, not a load failure):
-  For a given idProduct, if price_snapshots.idCategory differs from
-  products.idCategory, the row is surfaced by a data quality check
+  For a given id_product, if price_snapshots.id_category differs from
+  products.id_category, the row is surfaced by a data quality check
   (check_category_mismatch). This does not block loading and does not
   overwrite either value — it is a signal for review, not a correction.
 ```
@@ -201,7 +228,7 @@ Reconciliation rule (data quality warning, not a load failure):
 ## Load / Rerun Behavior
 
 ```text
-Loading is an upsert by (snapshotDate, idProduct). If the same date is
+Loading is an upsert by (snapshot_date, id_product). If the same date is
 reprocessed (manual rerun, or a corrected raw file), new values overwrite the
 existing row for that date rather than creating a duplicate or failing.
 Running the same daily pipeline twice for the same date must never create
@@ -211,13 +238,13 @@ duplicate rows or leave the table half-loaded.
 ## Business Rules
 
 ```text
-One product can have only one price row per snapshotDate.
+One product can have only one price row per snapshot_date.
 The full price guide should be stored every day, not only collection or watchlist products.
 Historical data starts from the first successful saved snapshot.
 Hyphenated source fields must be normalized before database insertion.
 Price fields may be null if Cardmarket does not provide a value.
 low should not be used as the main collection valuation source.
-Price snapshots for inactive products (isActiveInCatalog = false) remain
+Price snapshots for inactive products (is_active_in_catalog = false) remain
   valid historical observations and are not deleted or hidden.
 ```
 
@@ -254,35 +281,35 @@ The table deliberately does not use a simple `quantity` field because physical i
 
 | Field | Type | Nullable | Source | Description |
 |---|---|---|---|---|
-| `collectionItemId` | uuid / integer | No | System | Unique identifier for one physical collection item. |
-| `idProduct` | integer / bigint | No | User import / matched | Cardmarket product ID connected to `products.idProduct`. |
+| `collection_item_id` | uuid / integer | No | System | Unique identifier for one physical collection item. |
+| `id_product` | integer / bigint | No | User import / matched | Cardmarket product ID connected to `products.id_product`. |
 | `language` | text | No | User / default | Language of the physical item. Default is `DE`. |
 | `condition` | text | No | User / default | Condition of the item. Default is `Near Mint`. |
-| `acquisitionType` | text | No | User / default | How the item was acquired. Default is `pulled`. |
-| `purchasePrice` | decimal | Yes | User | Price paid for the item. Can be null for pulled cards, gifts, or unknown cost. |
-| `purchaseDate` | date | Yes | User | Date when the item was purchased, pulled, traded, or received. |
-| `isSealed` | boolean | No | User / derived | Whether the physical item is sealed. |
-| `isGraded` | boolean | No | User / default | Whether the item has been graded by a grading company. Default is `false`. |
-| `gradingCompany` | text | Yes | User | Grading company, for example PSA, CGC, BGS. Null when `isGraded = false`. |
-| `grade` | text | Yes | User | Grade value stored exactly as entered or imported — for example `"10"`, `"9.5"`, `"Pristine 10"`, or `"Gem Mint 10"`. Null when `isGraded = false`. Kept as text because grading companies use different, non-comparable scales; the MVP does not normalize across them. A later `gradingScale` / `gradeNumeric` split can be added once graded items are part of a real workflow. |
-| `storageLocation` | text | Yes | User | Where the item is stored, for example binder, box, shelf, case. |
-| `personalNote` | text | Yes | User | Free text note about the item. |
-| `isSold` | boolean | No | User / default | Whether the item has been sold. Default is `false`. |
-| `soldPrice` | decimal | Yes | User | Sale price if the item was sold. |
-| `soldDate` | date | Yes | User | Date when the item was sold. |
-| `createdAt` | timestamp | No | System | Time when the item was created in the database. |
-| `updatedAt` | timestamp | No | System | Last time the item row was updated. **Changes whenever any user-facing or lifecycle field changes** — language, condition, acquisitionType, purchasePrice, purchaseDate, isSealed, isGraded, gradingCompany, grade, storageLocation, personalNote, isSold, soldPrice, or soldDate. Unlike `products.updatedAt`, this field only reflects a real data change, since nothing touches this row on a recurring schedule. |
+| `acquisition_type` | text | No | User / default | How the item was acquired. Default is `pulled`. |
+| `purchase_price` | decimal | Yes | User | Price paid for the item. Can be null for pulled cards, gifts, or unknown cost. |
+| `purchase_date` | date | Yes | User | Date when the item was purchased, pulled, traded, or received. |
+| `is_sealed` | boolean | No | User / derived | Whether the physical item is sealed. |
+| `is_graded` | boolean | No | User / default | Whether the item has been graded by a grading company. Default is `false`. |
+| `grading_company` | text | Yes | User | Grading company, for example PSA, CGC, BGS. Null when `is_graded = false`. |
+| `grade` | text | Yes | User | Grade value stored exactly as entered or imported — for example `"10"`, `"9.5"`, `"Pristine 10"`, or `"Gem Mint 10"`. Null when `is_graded = false`. Kept as text because grading companies use different, non-comparable scales; the MVP does not normalize across them. A later `grading_scale` / `grade_numeric` split can be added once graded items are part of a real workflow. |
+| `storage_location` | text | Yes | User | Where the item is stored, for example binder, box, shelf, case. |
+| `personal_note` | text | Yes | User | Free text note about the item. |
+| `is_sold` | boolean | No | User / default | Whether the item has been sold. Default is `false`. |
+| `sold_price` | decimal | Yes | User | Sale price if the item was sold. |
+| `sold_date` | date | Yes | User | Date when the item was sold. |
+| `created_at` | timestamp | No | System | Time when the item was created in the database. |
+| `updated_at` | timestamp | No | System | Last time the item row was updated. **Changes whenever any user-facing or lifecycle field changes** — language, condition, acquisition_type, purchase_price, purchase_date, is_sealed, is_graded, grading_company, grade, storage_location, personal_note, is_sold, sold_price, or sold_date. Unlike `products.updated_at`, this field only reflects a real data change, since nothing touches this row on a recurring schedule. |
 
 ## Primary Key
 
 ```text
-collectionItemId
+collection_item_id
 ```
 
 ## Relationship
 
 ```text
-collection_items.idProduct → products.idProduct
+collection_items.id_product → products.id_product
 ```
 
 ## Default Values
@@ -290,9 +317,9 @@ collection_items.idProduct → products.idProduct
 ```text
 language = DE
 condition = Near Mint
-acquisitionType = pulled
-isGraded = false
-isSold = false
+acquisition_type = pulled
+is_graded = false
+is_sold = false
 ```
 
 ## Allowed Values
@@ -329,7 +356,7 @@ Poor
 Unknown
 ```
 
-### `acquisitionType`
+### `acquisition_type`
 
 Recommended values:
 
@@ -348,10 +375,10 @@ unknown
 One row equals one physical item.
 Multiple copies of the same card should be stored as multiple rows.
 Sold items should not be deleted.
-Sold items should be kept with isSold = true.
-If isGraded = false, gradingCompany and grade should be null.
-If isSold = false, soldPrice and soldDate should usually be null.
-If purchasePrice is null, gain/loss cannot be calculated.
+Sold items should be kept with is_sold = true.
+If is_graded = false, grading_company and grade should be null.
+If is_sold = false, sold_price and sold_date should usually be null.
+If purchase_price is null, gain/loss cannot be calculated.
 ```
 
 ---
@@ -370,42 +397,42 @@ The staging table protects the clean `collection_items` table from bad imports.
 
 | Field | Type | Nullable | Source | Description |
 |---|---|---|---|---|
-| `importRowId` | uuid / integer | No | System | Unique ID for one imported staging row. |
-| `importBatchId` | uuid / text | No | System | Identifier for one CSV/Excel import batch. |
-| `externalId` | text | Yes | User import | Optional ID from the original spreadsheet or external system. When present, used to prevent importing the same source row twice (see Business Rules). |
-| `providedIdProduct` | integer / bigint | Yes | User import | Product ID provided by the user, if available. May be invalid. |
-| `rawProductName` | text | Yes | User import | Product name as written in the imported file. Preserved even after a match is found. |
-| `matchedIdProduct` | integer / bigint | Yes | Matching process | Product ID selected by the matching process. Null if no match exists yet. |
+| `import_row_id` | uuid / integer | No | System | Unique ID for one imported staging row. |
+| `import_batch_id` | uuid / text | No | System | Identifier for one CSV/Excel import batch. |
+| `external_id` | text | Yes | User import | Optional ID from the original spreadsheet or external system. When present, used to prevent importing the same source row twice (see Business Rules). |
+| `provided_id_product` | integer / bigint | Yes | User import | Product ID provided by the user, if available. May be invalid. |
+| `raw_product_name` | text | Yes | User import | Product name as written in the imported file. Preserved even after a match is found. |
+| `matched_id_product` | integer / bigint | Yes | Matching process | Product ID selected by the matching process. Null if no match exists yet. |
 | `language` | text | Yes | User import / default | Imported or default language. Default is `DE`. |
 | `condition` | text | Yes | User import / default | Imported or default condition. Default is `Near Mint`. |
-| `acquisitionType` | text | Yes | User import / default | Imported or default acquisition type. Default is `pulled`. |
-| `purchasePrice` | decimal | Yes | User import | Imported purchase price. |
-| `purchaseDate` | date | Yes | User import | Imported purchase/acquisition date. |
-| `isSealed` | boolean | Yes | User import / derived | Whether the imported item is sealed. |
-| `storageLocation` | text | Yes | User import | Optional physical storage location, carried through to `collection_items.storageLocation` on import. Added in v0.4 — previously documented as an import column in `08-collection-import-flow.md` but missing from this table. |
-| `personalNote` | text | Yes | User import | Optional free-text note, carried through to `collection_items.personalNote` on import. Added in v0.4 for the same reason as `storageLocation` above. |
-| `matchStatus` | text | No | Matching process | Current status of the import row. See allowed values below, including `waiting_for_product`. |
-| `matchConfidence` | decimal | Yes | Matching process | Confidence score between 0.00 and 1.00. `0.00` means matching was attempted and found no confident match (zero or multiple candidates); `null` means matching has not been attempted on this row yet. In the MVP's synchronous flow, matching runs immediately on insert, so `null` is expected to be rare in practice — but the distinction is kept in case matching is ever made asynchronous. |
-| `errorMessage` | text | Yes | Validation process | Explanation if the row cannot be imported. |
-| `createdAt` | timestamp | No | System | Time when the staging row was created. |
-| `importedAt` | timestamp | Yes | System | Time when the row was imported into `collection_items`. |
+| `acquisition_type` | text | Yes | User import / default | Imported or default acquisition type. Default is `pulled`. |
+| `purchase_price` | decimal | Yes | User import | Imported purchase price. |
+| `purchase_date` | date | Yes | User import | Imported purchase/acquisition date. |
+| `is_sealed` | boolean | Yes | User import / derived | Whether the imported item is sealed. |
+| `storage_location` | text | Yes | User import | Optional physical storage location, carried through to `collection_items.storage_location` on import. Added in v0.4 — previously documented as an import column in `08-collection-import-flow.md` but missing from this table. |
+| `personal_note` | text | Yes | User import | Optional free-text note, carried through to `collection_items.personal_note` on import. Added in v0.4 for the same reason as `storage_location` above. |
+| `match_status` | text | No | Matching process | Current status of the import row. See allowed values below, including `waiting_for_product`. |
+| `match_confidence` | decimal | Yes | Matching process | Confidence score between 0.00 and 1.00. `0.00` means matching was attempted and found no confident match (zero or multiple candidates); `null` means matching has not been attempted on this row yet. In the MVP's synchronous flow, matching runs immediately on insert, so `null` is expected to be rare in practice — but the distinction is kept in case matching is ever made asynchronous. |
+| `error_message` | text | Yes | Validation process | Explanation if the row cannot be imported. |
+| `created_at` | timestamp | No | System | Time when the staging row was created. |
+| `imported_at` | timestamp | Yes | System | Time when the row was imported into `collection_items`. |
 
 ## Primary Key
 
 ```text
-importRowId
+import_row_id
 ```
 
 ## Relationship
 
 ```text
-collection_import_staging.matchedIdProduct → products.idProduct
+collection_import_staging.matched_id_product → products.id_product
 ```
 
 Important:
 
 ```text
-providedIdProduct should not be a strict foreign key in the staging table.
+provided_id_product should not be a strict foreign key in the staging table.
 ```
 
 Reason:
@@ -418,7 +445,7 @@ The staging table must be able to store invalid input for review.
 
 ```text
 Staging rows are matched in this order of preference:
-  1. exact idProduct match, if the import provided one (highest confidence)
+  1. exact id_product match, if the import provided one (highest confidence)
   2. exact product name match against the products table
   3. no confident match — routed to needs_review for manual confirmation
 
@@ -428,16 +455,16 @@ Advanced fuzzy matching is explicitly out of scope for the MVP.
 ## Handling a Match to a Product That Doesn't Exist Yet
 
 ```text
-If matchedIdProduct resolves to an idProduct not yet present in the local
+If matched_id_product resolves to an id_product not yet present in the local
 products table (new product, catalog not yet refreshed), the row is set to
-matchStatus = waiting_for_product rather than imported, needs_review, or
+match_status = waiting_for_product rather than imported, needs_review, or
 error. It is automatically re-checked after the next successful product
 catalog pipeline run.
 ```
 
 ## Allowed Values
 
-### `matchStatus`
+### `match_status`
 
 ```text
 ready_to_import
@@ -447,12 +474,12 @@ error
 imported
 ```
 
-### `matchConfidence`
+### `match_confidence`
 
 Suggested meaning:
 
 ```text
-1.00 = exact idProduct match
+1.00 = exact id_product match
 0.90 = exact product name match
 0.70 = strong fuzzy name match (unused while fuzzy matching is out of scope)
 0.40 = weak possible match (unused while fuzzy matching is out of scope)
@@ -463,23 +490,23 @@ null = matching was not attempted
 ## Business Rules
 
 ```text
-Rows with matchStatus = ready_to_import can be inserted into collection_items.
-Rows with matchStatus = needs_review require manual confirmation, and are not
+Rows with match_status = ready_to_import can be inserted into collection_items.
+Rows with match_status = needs_review require manual confirmation, and are not
   a dead end — once corrected, the row is re-validated and re-matched, and
   can move to ready_to_import, waiting_for_product, or error.
-Rows with matchStatus = waiting_for_product are retried automatically after
+Rows with match_status = waiting_for_product are retried automatically after
   the next successful product catalog pipeline run.
-Rows with matchStatus = error cannot be imported until fixed; once corrected,
+Rows with match_status = error cannot be imported until fixed; once corrected,
   the same re-validation applies as for needs_review.
-Rows with matchStatus = imported should not be imported again.
-A staging row should keep the original rawProductName even after matching.
+Rows with match_status = imported should not be imported again.
+A staging row should keep the original raw_product_name even after matching.
 Bad input should be stored and explained, not silently deleted.
-If externalId is provided, it is used to prevent importing the same source
+If external_id is provided, it is used to prevent importing the same source
   row more than once.
-If externalId is not provided, rows are not automatically deduplicated
+If external_id is not provided, rows are not automatically deduplicated
   (identical physical cards are a legitimate case of multiple valid rows);
-  instead, a row matching an existing collection_items row on idProduct +
-  language + condition + purchaseDate + purchasePrice is surfaced as a
+  instead, a row matching an existing collection_items row on id_product +
+  language + condition + purchase_date + purchase_price is surfaced as a
   possible-duplicate warning for manual review.
 ```
 
@@ -505,32 +532,32 @@ future collection targets
 
 | Field | Type | Nullable | Source | Description |
 |---|---|---|---|---|
-| `watchlistItemId` | uuid / integer | No | System | Unique ID for one watchlist row. |
-| `idProduct` | integer / bigint | No | User | Product being watched. |
+| `watchlist_item_id` | uuid / integer | No | System | Unique ID for one watchlist row. |
+| `id_product` | integer / bigint | No | User | Product being watched. |
 | `reason` | text | Yes | User | Why the product is being watched. |
-| `targetPrice` | decimal | Yes | User | Optional price target. |
-| `isActive` | boolean | No | User / default | Whether the watchlist entry is still active. |
-| `createdAt` | timestamp | No | System | Time when the watchlist row was created. |
-| `updatedAt` | timestamp | No | System | Last time the row was updated. |
+| `target_price` | decimal | Yes | User | Optional price target. |
+| `is_active` | boolean | No | User / default | Whether the watchlist entry is still active. |
+| `created_at` | timestamp | No | System | Time when the watchlist row was created. |
+| `updated_at` | timestamp | No | System | Last time the row was updated. |
 
 ## Primary Key
 
 ```text
-watchlistItemId
+watchlist_item_id
 ```
 
 ## Relationship
 
 ```text
-watchlist.idProduct → products.idProduct
+watchlist.id_product → products.id_product
 ```
 
 ## Uniqueness Enforcement
 
 ```text
-Only one active watchlist entry is allowed per idProduct, enforced at the
-schema level where supported (partial unique index on idProduct where
-isActive = true). Inactive rows are kept indefinitely for history and do not
+Only one active watchlist entry is allowed per id_product, enforced at the
+schema level where supported (partial unique index on id_product where
+is_active = true). Inactive rows are kept indefinitely for history and do not
 conflict with a later active entry for the same product.
 ```
 
@@ -539,7 +566,7 @@ conflict with a later active entry for the same product.
 ```text
 A product can be watched even if it is not in the collection.
 Inactive watchlist rows should be kept for history.
-Only one active watchlist entry per idProduct is allowed (schema-enforced
+Only one active watchlist entry per id_product is allowed (schema-enforced
   where possible, application-enforced otherwise).
 ```
 
@@ -559,43 +586,43 @@ A signal is not a prediction.
 
 | Field | Type | Nullable | Source | Description |
 |---|---|---|---|---|
-| `signalId` | uuid / integer | No | System | Unique ID for one generated signal. |
-| `signalDate` | date | No | System | Date when the signal was generated. |
-| `idProduct` | integer / bigint | Yes | Derived | Product connected to the signal. Nullable for collection-only signals. Populated alongside `collectionItemId` on collection-level signals for convenient joins/filtering, even though `collectionItemId` is what makes those rows unambiguous. |
-| `collectionItemId` | uuid / integer | Yes | Derived | Collection item connected to the signal. Nullable for product-level signals. **Required for `collection_gain`/`collection_loss`** — two physical copies of the same product can have different `purchasePrice` values, so a gain/loss signal keyed only on `idProduct` cannot represent a specific copy's change in value. |
-| `signalType` | text | No | Derived | Type of analytical signal. |
-| `signalValue` | decimal | Yes | Derived | Main numeric value connected to the signal, for example a percentage change. |
-| `signalStrength` | text | Yes | Derived | Simple category: `low`, `medium`, or `high` (optionally `critical` later). Lets BI views/dashboards filter or color-code without re-deriving strength from `signalValue`. |
-| `lookbackDays` | integer | Yes | Derived | Historical window used for the calculation, when the signal has one (e.g. `30` for a 30-day growth signal). Null for signals with no freely chosen window — `price_spike`, for example, compares against Cardmarket's own fixed `avg30` field rather than a window this project selects. |
-| `referenceValue` | decimal | Yes | Derived | The "before" / comparison value used in the calculation (e.g. `previousTrend` for growth, `purchasePrice` for collection gain/loss). |
-| `currentValue` | decimal | Yes | Derived | The "after" / current value used in the calculation (e.g. `currentTrend` for growth, `estimatedMarketValue` for collection gain/loss). |
-| `signalDescription` | text | Yes | Derived | Human-readable explanation of the signal. |
-| `createdAt` | timestamp | No | System | Time when the signal row was created. |
+| `signal_id` | uuid / integer | No | System | Unique ID for one generated signal. |
+| `signal_date` | date | No | System | Date when the signal was generated. |
+| `id_product` | integer / bigint | Yes | Derived | Product connected to the signal. Nullable for collection-only signals. Populated alongside `collection_item_id` on collection-level signals for convenient joins/filtering, even though `collection_item_id` is what makes those rows unambiguous. |
+| `collection_item_id` | uuid / integer | Yes | Derived | Collection item connected to the signal. Nullable for product-level signals. **Required for `collection_gain`/`collection_loss`** — two physical copies of the same product can have different `purchase_price` values, so a gain/loss signal keyed only on `id_product` cannot represent a specific copy's change in value. |
+| `signal_type` | text | No | Derived | Type of analytical signal. |
+| `signal_value` | decimal | Yes | Derived | Main numeric value connected to the signal, for example a percentage change. |
+| `signal_strength` | text | Yes | Derived | Simple category: `low`, `medium`, or `high` (optionally `critical` later). Lets BI views/dashboards filter or color-code without re-deriving strength from `signal_value`. |
+| `lookback_days` | integer | Yes | Derived | Historical window used for the calculation, when the signal has one (e.g. `30` for a 30-day growth signal). Null for signals with no freely chosen window — `price_spike`, for example, compares against Cardmarket's own fixed `avg30` field rather than a window this project selects. |
+| `reference_value` | decimal | Yes | Derived | The "before" / comparison value used in the calculation (e.g. `previous_trend` for growth, `purchase_price` for collection gain/loss). |
+| `current_value` | decimal | Yes | Derived | The "after" / current value used in the calculation (e.g. `current_trend` for growth, `estimated_market_value` for collection gain/loss). |
+| `signal_description` | text | Yes | Derived | Human-readable explanation of the signal. |
+| `created_at` | timestamp | No | System | Time when the signal row was created. |
 
-`signalStrength`, `lookbackDays`, `referenceValue`, and `currentValue` were added after the initial draft, once `09-analytics-signal-definitions.md` made clear a signal is much easier to review and display when it carries its own comparison context instead of forcing every consumer to recompute it from `price_snapshots`/`collection_items` at query time.
+`signal_strength`, `lookback_days`, `reference_value`, and `current_value` were added after the initial draft, once `09-analytics-signal-definitions.md` made clear a signal is much easier to review and display when it carries its own comparison context instead of forcing every consumer to recompute it from `price_snapshots`/`collection_items` at query time.
 
 ## Primary Key
 
 ```text
-signalId
+signal_id
 ```
 
 ## Relationships
 
 ```text
-analytics_signals.idProduct → products.idProduct
-analytics_signals.collectionItemId → collection_items.collectionItemId
+analytics_signals.id_product → products.id_product
+analytics_signals.collection_item_id → collection_items.collection_item_id
 ```
 
 ## New-Product Reliability Flag
 
 ```text
-priceAgeDays = snapshotDate - products.firstSeenAt
-isNewProduct = priceAgeDays < 14
+price_age_days = snapshot_date - products.first_seen_at
+is_new_product = price_age_days < 14
 
 Growth and price-spike signals treat a product as unstable/less reliable
-while isNewProduct is true. This does not affect valuation
-(estimatedMarketValue uses the latest price data regardless of product age)
+while is_new_product is true. This does not affect valuation
+(estimated_market_value uses the latest price data regardless of product age)
 — only signal generation. The 14-day window is a starting assumption, not a
 statistically derived threshold, and can be adjusted after observing real
 data.
@@ -634,7 +661,7 @@ Signals should not be presented as financial advice.
 Signals should not be called predictions in MVP.
 Machine learning should not be added until enough historical data exists.
 Growth/spike signals should treat products with fewer than 14 days since
-  firstSeenAt as unstable/new.
+  first_seen_at as unstable/new.
 ```
 
 ---
@@ -661,28 +688,28 @@ Fields:
 
 | Field | Description |
 |---|---|
-| `idProduct` | Product ID. |
-| `snapshotDate` | Latest available snapshot date. |
+| `id_product` | Product ID. |
+| `snapshot_date` | Latest available snapshot date. |
 | `trend` | Latest trend price. |
 | `avg30` | Latest 30-day average price. |
 | `low` | Latest low price. |
-| `estimatedMarketValue` | Calculated estimated value using trend and avg30 fallback logic. |
-| `isActiveInCatalog` | Whether the product is present in the latest catalog. Included so consumers can filter or flag inactive products without an extra join. |
+| `estimated_market_value` | Calculated estimated value using trend and avg30 fallback logic. |
+| `is_active_in_catalog` | Whether the product is present in the latest catalog. Included so consumers can filter or flag inactive products without an extra join. |
 
 Business logic:
 
 ```text
 if trend exists and avg30 exists:
-    estimatedMarketValue = (trend + avg30) / 2
+    estimated_market_value = (trend + avg30) / 2
 
 if trend exists and avg30 is missing:
-    estimatedMarketValue = trend
+    estimated_market_value = trend
 
 if trend is missing and avg30 exists:
-    estimatedMarketValue = avg30
+    estimated_market_value = avg30
 
 if both are missing:
-    estimatedMarketValue = null
+    estimated_market_value = null
 ```
 
 ## View: `vw_collection_current_value`
@@ -697,31 +724,31 @@ Fields:
 
 | Field | Description |
 |---|---|
-| `collectionItemId` | Physical collection item ID. |
-| `idProduct` | Cardmarket product ID. |
+| `collection_item_id` | Physical collection item ID. |
+| `id_product` | Cardmarket product ID. |
 | `name` | Product name. |
-| `productGroup` | `single` or `non_single`. |
+| `product_group` | `single` or `non_single`. |
 | `language` | Item language. |
 | `condition` | Item condition. |
-| `purchasePrice` | Price paid, if known. |
-| `estimatedMarketValue` | Estimated current value from latest price data. |
-| `estimatedGainLoss` | Estimated value minus purchase price. |
-| `estimatedGainLossPercent` | Estimated gain/loss percentage. |
-| `storageLocation` | Physical storage location. |
+| `purchase_price` | Price paid, if known. |
+| `estimated_market_value` | Estimated current value from latest price data. |
+| `estimated_gain_loss` | Estimated value minus purchase price. |
+| `estimated_gain_loss_percent` | Estimated gain/loss percentage. |
+| `storage_location` | Physical storage location. |
 
 Business logic:
 
 ```text
-Only include collection items where isSold = false.
+Only include collection items where is_sold = false.
 
-estimatedGainLoss = estimatedMarketValue - purchasePrice
-estimatedGainLossPercent = (estimatedGainLoss / purchasePrice) * 100
+estimated_gain_loss = estimated_market_value - purchase_price
+estimated_gain_loss_percent = (estimated_gain_loss / purchase_price) * 100
 ```
 
-If `purchasePrice` is missing or zero:
+If `purchase_price` is missing or zero:
 
 ```text
-estimatedGainLossPercent = null
+estimated_gain_loss_percent = null
 ```
 
 ## View: `vw_collection_summary`
@@ -750,9 +777,9 @@ most valuable item
 
 ```text
 Returns the collection item (full row, not just the value) with the highest
-estimatedMarketValue among unsold items. If two or more items are tied for
-the highest value, the tie is broken by the earliest purchaseDate; if
-purchaseDate is also equal or null, by the lowest collectionItemId, purely to
+estimated_market_value among unsold items. If two or more items are tied for
+the highest value, the tie is broken by the earliest purchase_date; if
+purchase_date is also equal or null, by the lowest collection_item_id, purely to
 keep the result deterministic. This is a display convenience, not an
 analytical ranking.
 ```
@@ -769,14 +796,14 @@ Fields:
 
 | Field | Description |
 |---|---|
-| `idProduct` | Product ID. |
+| `id_product` | Product ID. |
 | `name` | Product name. |
-| `productGroup` | `single` or `non_single`. |
-| `snapshotDate` | Date of price snapshot. |
+| `product_group` | `single` or `non_single`. |
+| `snapshot_date` | Date of price snapshot. |
 | `trend` | Trend price. |
 | `avg30` | 30-day average price. |
-| `estimatedMarketValue` | Estimated value calculated from trend and avg30. |
-| `isActiveInCatalog` | Whether the product is currently active in the catalog. Historical rows remain in this view regardless of this flag. |
+| `estimated_market_value` | Estimated value calculated from trend and avg30. |
+| `is_active_in_catalog` | Whether the product is currently active in the catalog. Historical rows remain in this view regardless of this flag. |
 
 ## View: `vw_products_without_prices`
 
@@ -789,11 +816,11 @@ Data quality view showing products that exist in the catalog but do not have pri
 Fields:
 
 ```text
-idProduct
+id_product
 name
-productGroup
-categoryName
-lastSeenAt
+product_group
+category_name
+last_seen_at
 ```
 
 ---
@@ -808,7 +835,7 @@ The price guide does not fully separate values by language or condition. The per
 
 The `low` value can be noisy because it may reflect unusual listings, damaged cards, outliers, or temporary underpriced offers. For this reason, the MVP does not use `low` as the main collection valuation field.
 
-New products can have unstable prices because early market data may be sparse or volatile. Valuation still uses the latest available price data for new products, but growth/spike analytics signals treat products with fewer than 14 days of history (since `firstSeenAt`) as less reliable. This is a simple data-quality flag, not a prediction.
+New products can have unstable prices because early market data may be sparse or volatile. Valuation still uses the latest available price data for new products, but growth/spike analytics signals treat products with fewer than 14 days of history (since `first_seen_at`) as less reliable. This is a simple data-quality flag, not a prediction.
 
 No retention limit is applied to raw archive files or historical price snapshots during the MVP. Storage growth is accepted and will be revisited once real file sizes and growth rates are observed.
 

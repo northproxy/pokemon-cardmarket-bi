@@ -3,9 +3,9 @@
 ## Document Version
 
 ```text
-Version: 0.3
+Version: 0.4
 Status: Draft / MVP design (architecture decisions applied)
-Last updated: 2026-07-04
+Last updated: 2026-07-14
 ```
 
 ## Changelog
@@ -13,8 +13,29 @@ Last updated: 2026-07-04
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-07-04 | Initial collection import flow |
-| 0.2 | 2026-07-04 | Added `waiting_for_product` status, unified `matchConfidence` scale and allowed-value lists with the data dictionary, broadened duplicate detection to match the cross-batch rule established elsewhere, made review/error correction explicitly iterative, tightened matching-order wording to require an exact name match for auto-resolution, and added same-file re-upload and empty-vs-missing-value guidance, based on architecture review |
-| 0.3 | 2026-07-04 | Added missing `storageLocation`/`personalNote` fields to this document's own staging table structure (they were already import columns and mapping targets here, but absent from the schema listing); set explicit `matchConfidence = 0.00` for the two no-confident-match branches; confirmed as intentional (not an oversight) that a `providedIdProduct` which doesn't resolve locally does not fall back to a name match |
+| 0.2 | 2026-07-04 | Added `waiting_for_product` status, unified `match_confidence` scale and allowed-value lists with the data dictionary, broadened duplicate detection to match the cross-batch rule established elsewhere, made review/error correction explicitly iterative, tightened matching-order wording to require an exact name match for auto-resolution, and added same-file re-upload and empty-vs-missing-value guidance, based on architecture review |
+| 0.3 | 2026-07-04 | Added missing `storage_location`/`personal_note` fields to this document's own staging table structure (they were already import columns and mapping targets here, but absent from the schema listing); set explicit `match_confidence = 0.00` for the two no-confident-match branches; confirmed as intentional (not an oversight) that a `provided_id_product` which doesn't resolve locally does not fall back to a name match |
+| 0.4 | 2026-07-14 | Renamed all `collection_import_staging`/`collection_items` DB field references from camelCase to `snake_case`, matching the project-wide database naming decision (see `02-data-model.md` v0.5, `03-data-dictionary.md` v0.5). **CSV/Excel import column headers are explicitly excluded from this rename and stay camelCase** — see the new naming note under "Recommended MVP Import Columns" below for the translation boundary between the two. |
+
+## Naming Convention Note (added v0.4)
+
+This document has two different naming conventions living side by side,
+deliberately:
+
+```text
+CSV/Excel import column headers   → camelCase (externalId, providedIdProduct,
+                                     rawProductName, purchasePrice, ...)
+collection_import_staging /
+collection_items database columns → snake_case (external_id, provided_id_product,
+                                     raw_product_name, purchase_price, ...)
+```
+
+The import file is user-facing input, not a database object, so it keeps
+its original camelCase column names. Everything from the moment a row
+lands in `collection_import_staging` onward is a real Postgres table, so
+it follows the project's `snake_case` database convention (see
+`02-data-model.md`, `03-data-dictionary.md`). The "Column Explanation"
+table below shows the exact mapping between the two.
 
 ## Purpose
 
@@ -68,11 +89,11 @@ The staging table acts as a temporary review area before data becomes part of th
 
 ```text
 1. User prepares a CSV or Excel file
-2. File is loaded into collection_import_staging under one importBatchId
+2. File is loaded into collection_import_staging under one import_batch_id
 3. Each row is validated
-4. Each row is matched to a Cardmarket idProduct
-5. Rows are assigned a matchStatus, including waiting_for_product if the
-   matched idProduct isn't in the local products table yet
+4. Each row is matched to a Cardmarket id_product
+5. Rows are assigned a match_status, including waiting_for_product if the
+   matched id_product isn't in the local products table yet
 6. Valid (ready_to_import) rows are imported into collection_items
 7. Imported staging rows are marked as imported
 8. needs_review / error rows can be corrected and re-validated — this is a
@@ -110,7 +131,7 @@ Pikachu,12345,DE,Near Mint,pulled,,,false,Binder 1,Second copy
 Charizard ex,,DE,Near Mint,bought_single,25.00,2026-07-01,false,Toploader Box,
 ```
 
-The third row deliberately illustrates a realistic ambiguous case: "Charizard ex" alone is not enough to identify a specific print or set on Cardmarket, so without a `providedIdProduct` this row is expected to land in `needs_review` rather than being auto-matched (see Matching Logic below).
+The third row deliberately illustrates a realistic ambiguous case: "Charizard ex" alone is not enough to identify a specific print or set on Cardmarket, so without a `providedIdProduct` this row is expected to land in `needs_review` rather than being auto-matched (see Matching Logic below). (`providedIdProduct` here is the CSV column header — see the naming note at the top of this document for how it maps to the staging table's `provided_id_product` column.)
 
 ---
 
@@ -134,19 +155,21 @@ personalNote
 
 ### Column Explanation
 
-| Column              | Description                                                    |
-| ------------------- | -------------------------------------------------------------- |
-| `externalId`        | Optional user-defined row/item identifier from the source file |
-| `providedIdProduct` | Optional Cardmarket product ID if already known                |
-| `rawProductName`    | Product name as entered by the user                            |
-| `language`          | Card/product language, default: `DE`                           |
-| `condition`         | Item condition, default: `Near Mint`                           |
-| `acquisitionType`   | How the item was acquired, default: `pulled`                   |
-| `purchasePrice`     | Optional purchase price                                        |
-| `purchaseDate`      | Optional purchase date                                         |
-| `isSealed`          | Whether the item is sealed                                     |
-| `storageLocation`   | Optional physical storage location                             |
-| `personalNote`      | Optional user note                                             |
+| Column              | Description                                                    | Maps to staging column |
+| ------------------- | -------------------------------------------------------------- | ----------------------- |
+| `externalId`        | Optional user-defined row/item identifier from the source file | `external_id`            |
+| `providedIdProduct` | Optional Cardmarket product ID if already known                | `provided_id_product`    |
+| `rawProductName`    | Product name as entered by the user                            | `raw_product_name`       |
+| `language`          | Card/product language, default: `DE`                           | `language`               |
+| `condition`         | Item condition, default: `Near Mint`                            | `condition`              |
+| `acquisitionType`   | How the item was acquired, default: `pulled`                   | `acquisition_type`       |
+| `purchasePrice`     | Optional purchase price                                        | `purchase_price`         |
+| `purchaseDate`      | Optional purchase date                                         | `purchase_date`          |
+| `isSealed`          | Whether the item is sealed                                     | `is_sealed`              |
+| `storageLocation`   | Optional physical storage location                              | `storage_location`       |
+| `personalNote`      | Optional user note                                              | `personal_note`          |
+
+**Column naming stays camelCase by design.** CSV/Excel import headers are user-facing input, not database columns, so they keep the original camelCase naming even though the database layer (this table's own `collection_import_staging`, and `collection_items`) uses `snake_case`. The "Maps to staging column" column above is the explicit translation boundary between the two — see `import_reader.py` (once implemented) for where that mapping actually happens in code.
 
 **Empty value vs. missing column:** an empty cell (`""`) for `language`, `condition`, or `acquisitionType` is treated the same as the column being absent entirely — both fall back to the documented default. This is called out explicitly because CSV parsers can distinguish an empty string from a missing field, and the MVP intentionally does not: an intentional empty value and an omitted one are not meaningfully different for this project's purposes.
 
@@ -165,32 +188,32 @@ collection_import_staging
 Recommended table structure:
 
 ```text
-importRowId
-importBatchId
-externalId
-providedIdProduct
-rawProductName
-matchedIdProduct
+import_row_id
+import_batch_id
+external_id
+provided_id_product
+raw_product_name
+matched_id_product
 language
 condition
-acquisitionType
-purchasePrice
-purchaseDate
-isSealed
-storageLocation
-personalNote
-matchStatus
-matchConfidence
-errorMessage
-createdAt
-importedAt
+acquisition_type
+purchase_price
+purchase_date
+is_sealed
+storage_location
+personal_note
+match_status
+match_confidence
+error_message
+created_at
+imported_at
 ```
 
 ---
 
 ## Field Roles
 
-### `importRowId`
+### `import_row_id`
 
 Unique technical ID for each staging row.
 
@@ -198,25 +221,25 @@ This is generated by the database.
 
 ---
 
-### `importBatchId`
+### `import_batch_id`
 
 Identifier for one import run.
 
-All rows from the same uploaded file should receive the same `importBatchId`.
+All rows from the same uploaded file should receive the same `import_batch_id`.
 
 This makes it possible to review, troubleshoot, or reprocess one import separately.
 
 Example:
 
 ```text
-importBatchId = 2026-07-04_collection_import_001
+import_batch_id = 2026-07-04_collection_import_001
 ```
 
-**Re-uploading the same file:** `importBatchId` identifies one *upload event*, not one *source file*. If the same CSV is uploaded twice, it produces two different batch IDs and, without further protection, two sets of staging rows. The system does not detect this by file content in the MVP (no file hashing/checksum). Protection instead relies on `externalId`, when present: see "Duplicate Handling" below. If the file has no `externalId` column at all, re-uploading it is the user's responsibility to avoid — this is a stated MVP limitation, not a silent risk, and is a stronger version of the same duplicate concern discussed there.
+**Re-uploading the same file:** `import_batch_id` identifies one *upload event*, not one *source file*. If the same CSV is uploaded twice, it produces two different batch IDs and, without further protection, two sets of staging rows. The system does not detect this by file content in the MVP (no file hashing/checksum). Protection instead relies on `external_id`, when present: see "Duplicate Handling" below. If the file has no `external_id` column at all, re-uploading it is the user's responsibility to avoid — this is a stated MVP limitation, not a silent risk, and is a stronger version of the same duplicate concern discussed there.
 
 ---
 
-### `externalId`
+### `external_id`
 
 Optional ID from the user's own file.
 
@@ -226,9 +249,9 @@ When present, it is also the main defense against importing the same source row 
 
 ---
 
-### `providedIdProduct`
+### `provided_id_product`
 
-Cardmarket `idProduct` provided directly by the user.
+Cardmarket `id_product` provided directly by the user.
 
 If this field exists and matches a product in the local `products` table, it should be treated as the strongest matching signal.
 
@@ -236,7 +259,7 @@ If it exists but does **not** match any product currently in the local `products
 
 ---
 
-### `rawProductName`
+### `raw_product_name`
 
 Original product name from the import file.
 
@@ -246,27 +269,27 @@ It should not be silently cleaned or overwritten because it is useful for debugg
 
 ---
 
-### `matchedIdProduct`
+### `matched_id_product`
 
-The Cardmarket `idProduct` selected by the import process.
+The Cardmarket `id_product` selected by the import process.
 
 This may come from:
 
 ```text
-providedIdProduct
+provided_id_product
 ```
 
 or from an exact name match using:
 
 ```text
-rawProductName
+raw_product_name
 ```
 
-Note that `matchedIdProduct` can be set even when the row is not yet importable — see `waiting_for_product` below, where a match exists but the product isn't in the local catalog yet.
+Note that `matched_id_product` can be set even when the row is not yet importable — see `waiting_for_product` below, where a match exists but the product isn't in the local catalog yet.
 
 ---
 
-### `matchStatus`
+### `match_status`
 
 Current import status of the row.
 
@@ -284,12 +307,12 @@ None of `needs_review`, `waiting_for_product`, or `error` are terminal. See "Ite
 
 ---
 
-### `matchConfidence`
+### `match_confidence`
 
 Confidence score for how the match was made, on a 0.00–1.00 scale.
 
 ```text
-1.00 = exact idProduct match
+1.00 = exact id_product match
 0.90 = exact product name match
 0.70 = strong fuzzy name match (unused while fuzzy matching is out of scope
        for the MVP — reserved for a later improvement)
@@ -304,7 +327,7 @@ This field is useful for review workflows but should not be overengineered at th
 
 ---
 
-### `errorMessage`
+### `error_message`
 
 Human-readable explanation of why a row cannot currently be imported.
 
@@ -324,7 +347,7 @@ This field should be updated (not just set once) each time a row is re-validated
 
 ---
 
-### `importedAt`
+### `imported_at`
 
 Timestamp showing when the staging row was successfully imported into `collection_items`.
 
@@ -339,43 +362,43 @@ The MVP matching logic should be simple and explainable.
 Recommended order:
 
 ```text
-1. If providedIdProduct exists:
+1. If provided_id_product exists:
    - check whether it exists in products
-   - if yes: set matchedIdProduct, matchStatus = ready_to_import,
-     matchConfidence = 1.00
-   - if no: set matchedIdProduct = providedIdProduct anyway (it's still the
-     user's stated intent), matchStatus = waiting_for_product,
-     matchConfidence = null, and record the reason in errorMessage.
+   - if yes: set matched_id_product, match_status = ready_to_import,
+     match_confidence = 1.00
+   - if no: set matched_id_product = provided_id_product anyway (it's still the
+     user's stated intent), match_status = waiting_for_product,
+     match_confidence = null, and record the reason in error_message.
      This is intentionally a dead end rather than a fallback to name
-     matching — an explicit user-supplied idProduct is trusted over a
+     matching — an explicit user-supplied id_product is trusted over a
      name-based guess, even when that ID isn't in the catalog yet. If the
-     row's rawProductName should also be checked against products.name in
+     row's raw_product_name should also be checked against products.name in
      this case, that's a deliberate future change, not an oversight in
      this version.
 
-2. If providedIdProduct is missing:
-   - try an EXACT match of rawProductName against products.name (not a
+2. If provided_id_product is missing:
+   - try an EXACT match of raw_product_name against products.name (not a
      fuzzy/partial match)
 
 3. If exactly one exact name match is found:
-   - set matchedIdProduct, matchStatus = ready_to_import,
-     matchConfidence = 0.90
+   - set matched_id_product, match_status = ready_to_import,
+     match_confidence = 0.90
 
 4. If multiple exact name matches are found, or the name match is anything
    less than exact:
-   - set matchStatus = needs_review
-   - set matchConfidence = 0.00 (matching was attempted; no single
+   - set match_status = needs_review
+   - set match_confidence = 0.00 (matching was attempted; no single
      confident result came out of it)
-   - write an explanation into errorMessage
+   - write an explanation into error_message
 
 5. If no match is found at all:
-   - set matchStatus = needs_review or error, depending on whether the row
+   - set match_status = needs_review or error, depending on whether the row
      is otherwise salvageable (see Match Status Rules)
-   - set matchConfidence = 0.00 for the same reason as step 4
-   - write an explanation into errorMessage
+   - set match_confidence = 0.00 for the same reason as step 4
+   - write an explanation into error_message
 ```
 
-`matchConfidence = null` is reserved for rows the matcher hasn't processed yet. In the MVP's synchronous import flow that's expected to be rare in practice, since matching runs immediately — but keeping the two values distinct (`null` = not attempted, `0.00` = attempted and inconclusive) leaves room for an async/batched matcher later without a schema change.
+`match_confidence = null` is reserved for rows the matcher hasn't processed yet. In the MVP's synchronous import flow that's expected to be rare in practice, since matching runs immediately — but keeping the two values distinct (`null` = not attempted, `0.00` = attempted and inconclusive) leaves room for an async/batched matcher later without a schema change.
 
 Advanced fuzzy matching is explicitly out of scope for the MVP. A name match either resolves exactly, or the row goes to a human for review — the MVP does not guess at a "probably right" match.
 
@@ -389,7 +412,7 @@ The goal is not to build a perfect fuzzy matching engine immediately. The goal i
 
 ### `ready_to_import`
 
-The row passed validation and has a valid `matchedIdProduct` that exists in the local `products` table right now.
+The row passed validation and has a valid `matched_id_product` that exists in the local `products` table right now.
 
 These rows can be moved into `collection_items`.
 
@@ -403,8 +426,8 @@ Typical reasons:
 
 ```text
 multiple exact product name matches
-no exact name match found and no providedIdProduct
-missing idProduct and unclear product name
+no exact name match found and no provided_id_product
+missing id_product and unclear product name
 ```
 
 These rows should not be imported automatically.
@@ -413,7 +436,7 @@ These rows should not be imported automatically.
 
 ### `waiting_for_product`
 
-A product match was found (`matchedIdProduct` is set, from either an exact `providedIdProduct` value or an exact name match), but that `idProduct` does not yet exist in the local `products` table.
+A product match was found (`matched_id_product` is set, from either an exact `provided_id_product` value or an exact name match), but that `id_product` does not yet exist in the local `products` table.
 
 This happens because the product catalog refreshes only twice per month, while a product can appear on Cardmarket (and therefore be knowable by name or ID) before that refresh happens.
 
@@ -443,7 +466,7 @@ These rows should not be imported until corrected.
 
 The row was successfully inserted into `collection_items`.
 
-After import, the staging row should keep its history and receive an `importedAt` timestamp.
+After import, the staging row should keep its history and receive an `imported_at` timestamp.
 
 ---
 
@@ -453,7 +476,7 @@ After import, the staging row should keep its history and receive an `importedAt
 
 ```text
 needs_review / error:
-    a person corrects the row (e.g. supplies a providedIdProduct, fixes an
+    a person corrects the row (e.g. supplies a provided_id_product, fixes an
     invalid date) → the row is re-validated and re-matched using the same
     logic as a fresh import → it can move to ready_to_import,
     waiting_for_product, or remain in needs_review / error if the
@@ -465,7 +488,7 @@ waiting_for_product:
     person can also manually trigger a recheck at any time
 ```
 
-A staging row's `matchStatus` should therefore be understood as "current best assessment," not a permanent classification.
+A staging row's `match_status` should therefore be understood as "current best assessment," not a permanent classification.
 
 ---
 
@@ -487,15 +510,15 @@ Mapping:
 
 | Staging Field      | Collection Field  |
 | ------------------ | ----------------- |
-| `matchedIdProduct` | `idProduct`       |
+| `matched_id_product` | `id_product`       |
 | `language`         | `language`        |
 | `condition`        | `condition`       |
-| `acquisitionType`  | `acquisitionType` |
-| `purchasePrice`    | `purchasePrice`   |
-| `purchaseDate`     | `purchaseDate`    |
-| `isSealed`         | `isSealed`        |
-| `storageLocation`  | `storageLocation` |
-| `personalNote`     | `personalNote`    |
+| `acquisition_type`  | `acquisition_type` |
+| `purchase_price`    | `purchase_price`   |
+| `purchase_date`     | `purchase_date`    |
+| `is_sealed`         | `is_sealed`        |
+| `storage_location`  | `storage_location` |
+| `personal_note`     | `personal_note`    |
 
 Default values should be applied when fields are missing or empty (see "Empty value vs. missing column" above).
 
@@ -508,9 +531,9 @@ The project uses the following collection defaults:
 ```text
 language = DE
 condition = Near Mint
-acquisitionType = pulled
-isGraded = false
-isSold = false
+acquisition_type = pulled
+is_graded = false
+is_sold = false
 ```
 
 These defaults reflect the current collection style:
@@ -559,22 +582,22 @@ This also makes the collection history cleaner and more flexible.
 
 For MVP, duplicates should be handled carefully but not overengineered.
 
-The system should allow multiple rows with the same `idProduct` because owning multiple copies of the same card is normal.
+The system should allow multiple rows with the same `id_product` because owning multiple copies of the same card is normal.
 
 Allowed:
 
 ```text
-same idProduct
+same id_product
 same language
 same condition
 multiple physical copies
 ```
 
-**Within a batch:** if `externalId` is provided, the same `externalId` should not appear twice in the same import batch. This should be treated as a data quality error for the duplicate row.
+**Within a batch:** if `external_id` is provided, the same `external_id` should not appear twice in the same import batch. This should be treated as a data quality error for the duplicate row.
 
-**Across batches, including re-uploads of the same file:** if `externalId` is provided, it is also checked against previously imported rows (any batch), not just the current one — the same source row should not be importable more than once even if it arrives in a different upload. This is the mechanism that protects against the "same file uploaded twice" case described under `importBatchId` above.
+**Across batches, including re-uploads of the same file:** if `external_id` is provided, it is also checked against previously imported rows (any batch), not just the current one — the same source row should not be importable more than once even if it arrives in a different upload. This is the mechanism that protects against the "same file uploaded twice" case described under `import_batch_id` above.
 
-**When `externalId` is not provided:** the system does not automatically block anything, since multiple genuinely identical physical cards are a normal, legitimate case (see "One Row = One Physical Item"). Instead, a row that matches an *existing* `collection_items` row on `idProduct` + `language` + `condition` + `purchaseDate` + `purchasePrice` all at once is surfaced as a possible-duplicate warning for manual review at import time. It is not blocked automatically, and it is not the same as a hard validation error — the person importing has the context to know whether it's a real second copy or an accidental re-import.
+**When `external_id` is not provided:** the system does not automatically block anything, since multiple genuinely identical physical cards are a normal, legitimate case (see "One Row = One Physical Item"). Instead, a row that matches an *existing* `collection_items` row on `id_product` + `language` + `condition` + `purchase_date` + `purchase_price` all at once is surfaced as a possible-duplicate warning for manual review at import time. It is not blocked automatically, and it is not the same as a hard validation error — the person importing has the context to know whether it's a real second copy or an accidental re-import.
 
 ---
 
@@ -585,24 +608,24 @@ Before a row can be imported, the following checks should be performed.
 ### Required for Import
 
 ```text
-matchedIdProduct is not null
-matchedIdProduct exists in the local products table right now (otherwise
+matched_id_product is not null
+matched_id_product exists in the local products table right now (otherwise
   the row is waiting_for_product, not ready_to_import)
 language is not null
 condition is not null
-acquisitionType is not null
-isSealed is not null
+acquisition_type is not null
+is_sealed is not null
 ```
 
 ### Recommended Checks
 
 ```text
-purchasePrice must be numeric if provided
-purchasePrice must not be negative
-purchaseDate must be a valid date if provided
+purchase_price must be numeric if provided
+purchase_price must not be negative
+purchase_date must be a valid date if provided
 condition should use allowed values
 language should use allowed values
-acquisitionType should use allowed values
+acquisition_type should use allowed values
 ```
 
 ---
@@ -659,7 +682,7 @@ Near Mint
 
 ---
 
-### `acquisitionType`
+### `acquisition_type`
 
 For MVP:
 
@@ -685,11 +708,11 @@ pulled
 The MVP should follow these import safety rules:
 
 ```text
-Do not import rows with matchStatus = needs_review
-Do not import rows with matchStatus = waiting_for_product
-Do not import rows with matchStatus = error
+Do not import rows with match_status = needs_review
+Do not import rows with match_status = waiting_for_product
+Do not import rows with match_status = error
 Do not delete staging rows after successful import
-Do not overwrite rawProductName
+Do not overwrite raw_product_name
 Do not silently change user-provided values
 Do not merge physical items into quantity rows
 Do not treat needs_review / error / waiting_for_product as permanent —
@@ -705,19 +728,19 @@ The staging table should preserve import history.
 Collection items are valued by joining:
 
 ```text
-collection_items.idProduct
+collection_items.id_product
 ```
 
 to the latest available price in:
 
 ```text
-price_snapshots.idProduct
+price_snapshots.id_product
 ```
 
 The estimated market value uses the existing MVP formula:
 
 ```text
-estimatedMarketValue = (trend + avg30) / 2
+estimated_market_value = (trend + avg30) / 2
 ```
 
 Fallback logic:
@@ -745,7 +768,7 @@ The project should not use `low` as the main collection value because it can be 
 The MVP collection import flow has several intentional limitations.
 
 ```text
-No fuzzy matching — only exact idProduct or exact name matches auto-resolve
+No fuzzy matching — only exact id_product or exact name matches auto-resolve
 No file content hashing/checksum to detect a re-uploaded file automatically
 No automatic image recognition
 No automatic Cardmarket seller data scraping
@@ -774,7 +797,7 @@ manual review UI
 import preview screen
 CSV export
 backup and restore
-duplicate detection across batches beyond externalId matching
+duplicate detection across batches beyond external_id matching
 support for graded cards
 support for sealed product-specific fields
 support for multiple collection owners

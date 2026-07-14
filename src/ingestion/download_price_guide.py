@@ -24,7 +24,6 @@ from __future__ import annotations
 import posixpath
 import sys
 from datetime import date
-from ftplib import FTP_TLS
 from pathlib import Path
 
 import requests
@@ -32,6 +31,7 @@ import requests
 from src.config import config
 from src.utils.archive_filenames import build_filename, next_filename_for_upload
 from src.utils.date_helpers import get_pipeline_date
+from src.utils.ftp_client import connect_ftp, list_remote_filenames, upload_to_ftp
 
 PREFIX = "price_guide_6"
 
@@ -73,34 +73,6 @@ def save_local_copy(content: bytes, snapshot_date: date) -> Path:
     return local_path
 
 
-def connect_ftp() -> FTP_TLS:
-    """Connect using explicit FTPS (AUTH TLS), per
-    11-local-environment-setup.md: plain ftp:// is rejected by this
-    provider with a 530 error even with correct credentials."""
-    ftps = FTP_TLS()
-    ftps.connect(config.FTP_HOST, 21, timeout=60)
-    ftps.login(config.FTP_USER, config.FTP_PASS)
-    ftps.prot_p()  # secure the data connection, not just the control connection
-    return ftps
-
-
-def list_remote_filenames(ftps: FTP_TLS, remote_dir: str) -> list[str]:
-    try:
-        return ftps.nlst(remote_dir)
-    except Exception:
-        # Some FTP servers return an error for nlst on an empty directory
-        # rather than an empty list. Treat that the same as "nothing there
-        # yet" rather than failing the whole run over it.
-        return []
-
-
-def upload_to_ftp(ftps: FTP_TLS, local_path: Path, remote_dir: str, remote_filename: str) -> str:
-    remote_full_path = posixpath.join(remote_dir, remote_filename)
-    with open(local_path, "rb") as f:
-        ftps.storbinary(f"STOR {remote_full_path}", f)
-    return remote_full_path
-
-
 def build_success_message(snapshot_date: date, filename: str, size_bytes: int) -> str:
     """
     Build the Telegram success message.
@@ -108,10 +80,7 @@ def build_success_message(snapshot_date: date, filename: str, size_bytes: int) -
     "Last item / idProduct" is intentionally a placeholder for now
     (DECISIONS.md §10) — reporting it correctly requires knowing whether
     price_guide_6.json's root is a bare list or a nested object (e.g.
-    {"priceGuides": [...]}), which hasn't been confirmed yet. Item COUNT
-    would be a one-line addition (len(json.loads(content))); the specific
-    last idProduct needs that structure confirmed first, per the earlier
-    discussion to revisit this separately.
+    {"priceGuides": [...]}), which hasn't been confirmed yet.
     """
     return (
         "✅ price_guide archived\n"

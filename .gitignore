@@ -31,6 +31,7 @@ db/backups/*.sql
 # Raw data archive (lives on FTP/object storage, not in Git —
 # only data/sample/ is committed)
 data/raw/
+data/reference/
 
 # OS / editor noise
 .DS_Store

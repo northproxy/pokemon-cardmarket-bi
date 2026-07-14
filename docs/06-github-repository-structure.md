@@ -3,9 +3,9 @@
 ## Document Version
 
 ```text
-Version: 0.6
-Status: Draft / MVP design (architecture decisions applied); Phase 0a implemented
-Last updated: 2026-07-07
+Version: 0.7
+Status: Draft / MVP design (architecture decisions applied)
+Last updated: 2026-07-14
 ```
 
 ## Changelog
@@ -17,7 +17,8 @@ Last updated: 2026-07-07
 | 0.3 | 2026-07-04 | Added `LICENSE` (MIT) to the repository tree so it matches `10-readme-documentation-structure.md`; documented Supabase pooled-connection and service-credential/RLS guidance for `DATABASE_URL` in `.env.example` |
 | 0.4 | 2026-07-05 | Added `db/backups/` to the repository tree and `DATABASE_URL_BACKUP` to `.env.example` for the dev/prod Supabase split and manual backup process (see `04-etl-pipeline-design.md`); added `check_invalid_collection_items.sql` to `sql/checks/`; added a Local-Only Folders section documenting the working-folder additions (`data/raw/`, `data/imports/`, `data/exports/`, `logs/`) that exist on disk but are intentionally not part of this repository tree |
 | 0.5 | 2026-07-05 | Added `11-local-environment-setup.md` to the docs tree; trimmed this document's own "Local-Only Folders" section to a pointer at the new doc instead of duplicating its content, per the project's own rule against defining the same thing in two places |
-| 0.6 | 2026-07-07 | Corrected `.env.example`'s FTP variables to the actual, already-tested names `FTP_PASS` / `FTP_REMOTE_DIR` (previously `FTP_PASSWORD` / `FTP_REMOTE_PATH`, and `FTP_PASS` was missing from the listing entirely); noted `CARDMARKET_PRICE_GUIDE_URL` now has a working default in code since the real URL is known; added `.github/workflows/daily-price-guide.yml` and `src/ingestion/download_price_guide.py` as implemented (Phase 0a) rather than only planned |
+| 0.6 | 2026-07-12 | Two corrections to `.env.example`, both logged in `DECISIONS.md` §4 and §7 in the code repository: (1) renamed `FTP_REMOTE_PATH` to `FTP_REMOTE_DIR`, matching the real, already-provisioned GitHub Actions secret name; (2) added the FTP password variable to the listing at all — it was previously entirely absent from this doc's `.env.example` block even though `07-github-actions-logic.md` already listed it as a required secret, and is now included as `FTP_PASS` (also renamed from the `FTP_PASSWORD` originally implied by `07`). Also added optional `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` entries for the pipeline notification feature added during implementation. |
+| 0.7 | 2026-07-14 | Renamed all field-name references from camelCase to `snake_case` (e.g. `idProduct` → `id_product`, `matchStatus` → `match_status`, `estimatedMarketValue` → `estimated_market_value`), matching the project-wide database naming decision in `02-data-model.md` v0.5 / `03-data-dictionary.md` v0.5. Only field-name mentions changed; folder paths, filenames, and all-caps env var names (`FTP_PASS`, `DATABASE_URL`, etc.) are untouched. |
 
 ## Purpose
 
@@ -163,25 +164,22 @@ DATABASE_URL=
 DATABASE_URL_BACKUP=
 
 PIPELINE_TIMEZONE=Europe/Vienna
+
+# Optional — pipeline success/failure notifications (see DECISIONS.md §10
+# in the code repository). If either is unset, notifications are skipped
+# rather than failing the pipeline.
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 ```
 
-**Corrected in v0.6:** the FTP variables are `FTP_PASS` and `FTP_REMOTE_DIR`
-— not `FTP_PASSWORD` and `FTP_REMOTE_PATH` as earlier drafts of this and
-other docs named them. These are the actual names used by the
-already-provisioned and tested GitHub Actions secrets and by the
-implemented code (`src/config/config.py`,
-`.github/workflows/daily-price-guide.yml`); the docs were written before
-those secrets existed and used a different naming guess. `FTP_PASS` was
-also previously missing entirely from this listing — a separate small gap
-now fixed at the same time.
+**Corrected in v0.6** (see `DECISIONS.md` §4 and §7 in the code
+repository): this block previously used `FTP_REMOTE_PATH` and, separately,
+omitted the FTP password variable entirely — a listing gap independent of
+naming, since `07-github-actions-logic.md` already documented a required
+password secret that never appeared here. The real, already-provisioned
+GitHub Actions secrets are `FTP_PASS` and `FTP_REMOTE_DIR`, shown above.
 
-**`CARDMARKET_PRICE_GUIDE_URL` note:** the actual URL is now known
-(`https://downloads.s3.cardmarket.com/productCatalog/priceGuide/price_guide_6.json`)
-and isn't sensitive, so the implemented `src/config/config.py` defaults to
-it when the environment variable isn't set, while still allowing override
-here (or as a GitHub Actions variable) if Cardmarket ever changes the path.
-
-**Why `PIPELINE_TIMEZONE` is listed explicitly:** the data model and ETL design docs define `snapshotDate` as the pipeline run date in the Europe/Vienna timezone, with no exceptions. GitHub Actions runners default to UTC, so this conversion has to be an explicit, enforced step in code — not an assumption baked only into documentation. Listing it here as a required variable makes that dependency visible to anyone setting up the project, and gives the ingestion code one obvious place to read it from instead of hardcoding a timezone string.
+**Why `PIPELINE_TIMEZONE` is listed explicitly:** the data model and ETL design docs define `snapshot_date` as the pipeline run date in the Europe/Vienna timezone, with no exceptions. GitHub Actions runners default to UTC, so this conversion has to be an explicit, enforced step in code — not an assumption baked only into documentation. Listing it here as a required variable makes that dependency visible to anyone setting up the project, and gives the ingestion code one obvious place to read it from instead of hardcoding a timezone string.
 
 **Why `DATABASE_URL` should be the pooled Supabase connection string:** the project targets Postgres via Supabase's free tier. GitHub Actions runs are short-lived, so `DATABASE_URL` should point at Supabase's pooled connection (Supavisor, transaction mode) rather than the direct connection, to avoid exhausting the free tier's limited connection count if a run hangs or overlaps with another. This should also be a database-role/service credential, not the anon/public client key — the pipeline writes as itself, not as an end user, so RLS policies on any client-facing tables don't apply to it and shouldn't be mistaken for the cause of a write failure.
 
@@ -321,9 +319,9 @@ sql/schema/005_create_watchlist.sql
 sql/schema/006_create_analytics_signals.sql
 ```
 
-The numbering makes the expected creation order clear, and matches the dependency order in the data model doc (`products` before anything that references `idProduct`).
+The numbering makes the expected creation order clear, and matches the dependency order in the data model doc (`products` before anything that references `id_product`).
 
-**Migration approach for MVP:** schema files are applied manually, in numeric order, against the target database. A dedicated migration tool (Alembic, Flyway, or similar) is not required for the MVP given the small number of tables, but this is a conscious simplification, not an oversight — if a schema file needs to change after it has already been applied somewhere (for example, adding `waiting_for_product` to the `matchStatus` allowed values), that change should be captured as a new numbered file (e.g. `007_alter_collection_import_staging_add_waiting_for_product.sql`) rather than editing an already-applied file in place, so the numbered sequence stays an honest history of what was actually run.
+**Migration approach for MVP:** schema files are applied manually, in numeric order, against the target database. A dedicated migration tool (Alembic, Flyway, or similar) is not required for the MVP given the small number of tables, but this is a conscious simplification, not an oversight — if a schema file needs to change after it has already been applied somewhere (for example, adding `waiting_for_product` to the `match_status` allowed values), that change should be captured as a new numbered file (e.g. `007_alter_collection_import_staging_add_waiting_for_product.sql`) rather than editing an already-applied file in place, so the numbered sequence stays an honest history of what was actually run.
 
 ### `sql/views/`
 
@@ -394,7 +392,7 @@ src/
 
 This structure separates responsibilities without creating too many folders.
 
-**Why `transform/` and `load/` are separate:** validating/normalizing a file and actually writing it to the database are distinct responsibilities in the ETL pipeline doc (validate → transform → load are separate pipeline stages). Keeping them in separate folders makes it possible to test transformation logic (e.g. field normalization, productGroup enrichment) without touching a database at all, and makes the upsert/idempotency logic (by `idProduct`, or by `snapshotDate + idProduct`) easy to find in one place.
+**Why `transform/` and `load/` are separate:** validating/normalizing a file and actually writing it to the database are distinct responsibilities in the ETL pipeline doc (validate → transform → load are separate pipeline stages). Keeping them in separate folders makes it possible to test transformation logic (e.g. field normalization, product_group enrichment) without touching a database at all, and makes the upsert/idempotency logic (by `id_product`, or by `snapshot_date + id_product`) easy to find in one place.
 
 ---
 
@@ -426,7 +424,7 @@ Example responsibilities:
 download price_guide_6.json
 download products_singles_6.json
 download products_nonsingles_6.json
-compute snapshotDate / catalog archive date using the Europe/Vienna timezone
+compute snapshot_date / catalog archive date using the Europe/Vienna timezone
 save dated raw files
 detect an existing file for the same date and save a rerun-suffixed copy
   instead of overwriting it
@@ -467,9 +465,9 @@ Example responsibilities:
 ```text
 resolve the canonical raw archive file for a given date (base file, or the
   latest rerun-suffixed file if one exists)
-upsert products by idProduct
-upsert price_snapshots by snapshotDate + idProduct
-recheck collection_import_staging rows with matchStatus = waiting_for_product
+upsert products by id_product
+upsert price_snapshots by snapshot_date + id_product
+recheck collection_import_staging rows with match_status = waiting_for_product
   after a successful product catalog load
 run data quality checks after loading
 ```
@@ -488,10 +486,10 @@ Example responsibilities:
 read CSV or Excel collection import files
 load rows into collection_import_staging
 validate required collection fields
-match raw product names to idProduct (exact idProduct, then exact name, then
+match raw product names to id_product (exact id_product, then exact name, then
   needs_review)
 detect matches to products that don't exist locally yet and set
-  matchStatus = waiting_for_product
+  match_status = waiting_for_product
 move reviewed/ready rows into collection_items
 re-validate and re-match rows after manual correction (needs_review and
   error are not terminal states)
@@ -515,14 +513,14 @@ Example responsibilities:
 calculate estimated market value
 prepare summary metrics
 generate basic analytics signals
-flag products younger than 14 days since firstSeenAt as new/less reliable
+flag products younger than 14 days since first_seen_at as new/less reliable
   for growth and price-spike signals
 ```
 
 The main MVP valuation formula is:
 
 ```text
-estimatedMarketValue = (trend + avg30) / 2
+estimated_market_value = (trend + avg30) / 2
 ```
 
 Fallback logic should be handled consistently:
@@ -581,7 +579,7 @@ High-level flow:
 
 ```text
 download price_guide_6.json
-compute snapshotDate using Europe/Vienna, not the runner's local time
+compute snapshot_date using Europe/Vienna, not the runner's local time
 save dated raw archive file (or a rerun-suffixed copy if one already exists
   for that date)
 upload archive file through FTP
@@ -604,9 +602,9 @@ compute catalog archive date using Europe/Vienna
 save dated raw archive files (or rerun-suffixed copies)
 upload archive files through FTP
 validate files
-enrich with productGroup and sourceFile
+enrich with product_group and source_file
 load products table from the canonical files
-recheck collection_import_staging rows with matchStatus = waiting_for_product
+recheck collection_import_staging rows with match_status = waiting_for_product
 run product data quality checks
 ```
 

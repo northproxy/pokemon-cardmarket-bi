@@ -27,6 +27,11 @@ partial-failure rule in 04/07 ("if one catalog file succeeds and the other
 fails, do not update products at all") — that rule is about the `products`
 table, which this script does not touch.
 
+FTP HELPERS (DECISIONS.md §12): connect_ftp/list_remote_filenames/
+upload_to_ftp now live in src/utils/ftp_client.py, shared with
+download_price_guide.py. Originally duplicated here as short-term debt
+(§11 Decision C) — extracted once this script was proven working.
+
 Usage:
     python -m src.ingestion.download_product_catalogs
 
@@ -52,6 +57,7 @@ import requests
 from src.config import config
 from src.utils.archive_filenames import build_filename, next_filename_for_upload
 from src.utils.date_helpers import get_pipeline_date
+from src.utils.ftp_client import connect_ftp, list_remote_filenames, upload_to_ftp
 
 # Two Cardmarket source files, combined into one unified catalog later
 # (04-etl-pipeline-design.md) — but archived here as two independent files,
@@ -73,14 +79,6 @@ REMOTE_SUBDIR = "product_catalogs"
 
 TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
 
-# NOTE: connect_ftp / list_remote_filenames / upload_to_ftp below are
-# intentionally duplicated from download_price_guide.py rather than
-# factored into a shared src/utils/ftp_client.py. This is deliberate
-# technical debt (DECISIONS.md §11), not an oversight — extracting a shared
-# helper now would mean touching the already-tested, already-working daily
-# price guide script while building this one. Worth doing as a follow-up
-# refactor once this script is equally proven, not before.
-
 
 def fetch_json_bytes(url: str, label: str) -> bytes:
     """Download a source file. Raises requests.HTTPError on a bad status,
@@ -101,34 +99,6 @@ def save_local_copy(content: bytes, catalog_date: date, prefix: str) -> Path:
     local_path = LOCAL_ARCHIVE_DIR / filename
     local_path.write_bytes(content)
     return local_path
-
-
-def connect_ftp() -> FTP_TLS:
-    """Connect using explicit FTPS (AUTH TLS), per
-    11-local-environment-setup.md: plain ftp:// is rejected by this
-    provider with a 530 error even with correct credentials."""
-    ftps = FTP_TLS()
-    ftps.connect(config.FTP_HOST, 21, timeout=60)
-    ftps.login(config.FTP_USER, config.FTP_PASS)
-    ftps.prot_p()  # secure the data connection, not just the control connection
-    return ftps
-
-
-def list_remote_filenames(ftps: FTP_TLS, remote_dir: str) -> list[str]:
-    try:
-        return ftps.nlst(remote_dir)
-    except Exception:
-        # Some FTP servers error on nlst for an empty directory rather than
-        # returning an empty list. Treat that the same as "nothing there
-        # yet" rather than failing the whole run over it.
-        return []
-
-
-def upload_to_ftp(ftps: FTP_TLS, local_path: Path, remote_dir: str, remote_filename: str) -> str:
-    remote_full_path = posixpath.join(remote_dir, remote_filename)
-    with open(local_path, "rb") as f:
-        ftps.storbinary(f"STOR {remote_full_path}", f)
-    return remote_full_path
 
 
 def process_one(
