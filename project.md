@@ -3,9 +3,9 @@
 ## Document Version
 
 ```text
-Version: 0.5
+Version: 0.6
 Status: Living reference, updated as decisions are made during implementation
-Last updated: 2026-07-14
+Last updated: 2026-07-15
 ```
 
 ## Changelog
@@ -17,10 +17,11 @@ Last updated: 2026-07-14
 | 0.3 | 2026-07-05 | Added this Document Version / Changelog block, so staleness is checkable the same way it is for docs `01`–`10` |
 | 0.4 | 2026-07-05 | New doc `11-local-environment-setup.md` created, consolidating local-only folder/env-var content previously duplicated across `06` and this file; updated the repo-tree comment, local-only folder section, and Document Index (§18) here to match; `06` and `10` updated in parallel |
 | 0.5 | 2026-07-14 | Renamed every database field reference from camelCase to `snake_case` (e.g. `idProduct` → `id_product`) throughout this file, matching the project-wide database naming decision made explicitly during implementation review (see `02-data-model.md` v0.5 / `03-data-dictionary.md` v0.5, and `DECISIONS.md` in the code repository for the reasoning). This was a decision made ahead of the real schema being built — `sql/schema/001`–`006` were still unbuilt placeholders at the time of this rewrite — not a correction of a live mismatch. CSV/Excel import column headers (§10) are explicitly unaffected and stay camelCase. |
+| 0.6 | 2026-07-15 | Caught up this file with implementation-time corrections already logged in `DECISIONS.md` and reflected in docs `01`/`04`/`05`/`06`/`07`/`11`, which this file had not picked up despite being dated after them: (1) product catalog cadence corrected from twice-monthly (1st/15th) to weekly (every Friday) throughout §3/§7/§13; (2) FTP env var names corrected from `FTP_PASSWORD`/`FTP_REMOTE_PATH` to the real, provisioned `FTP_PASS`/`FTP_REMOTE_DIR` in §4/§9; (3) raw archive folder structure in §8 corrected from the nested `/raw/cardmarket/pokemon/...` path (never built) to the real flat FTP layout; (4) added the optional `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` notification feature to §4/§9 (`DECISIONS.md` §10); (5) added `src/utils/ftp_client.py` extraction to §4 (`DECISIONS.md` §12); (6) updated the Decision Log (§16) with these six items; (7) updated the project-phase line below to reflect Phase 0a as implemented. |
 
 **Purpose of this file:** a single, dense reference consolidating the resolved design across all 10 project docs (`01`–`10`). This is what Claude should consult to answer implementation questions — it is not a replacement for the source docs, but it should be accurate enough that you rarely need to open them. **If this file's "Last updated" date is older than the newest date in any of `01`–`10`'s own changelogs, treat this file as potentially stale and check the source doc directly.**
 
-Project phase as of this writing: **design complete, early implementation (Phase 0a: daily price guide archiving) — see §2 in the build plan discussed in conversation, not repeated here.**
+Project phase as of this writing: **Phase 0a (daily price guide + weekly product catalog archiving) implemented** — both ingestion scripts are built, consolidated into single runnable entry points (`download_price_guide.py`, `download_product_catalogs.py`), tested, and running against the real FTP account, per `DECISIONS.md` §1–§12 in the code repository. **Phase 0b (validate → transform → load into the database) is next** and has not been started: no Supabase schema exists yet, and `src/transform/`/`src/load/` are unbuilt. See the assistant's own Phase 0b breakdown in conversation for a proposed order, not repeated here.
 
 ---
 
@@ -29,7 +30,7 @@ Project phase as of this writing: **design complete, early implementation (Phase
 A learning-focused data engineering + BI project that:
 
 ```text
-collects official Cardmarket Pokémon product/price JSON files daily/twice-monthly
+collects official Cardmarket Pokémon product/price JSON files daily/weekly
 archives the raw files immutably
 loads them into a normalized Postgres database
 builds historical daily price data over time
@@ -78,10 +79,12 @@ Same variable name (`DATABASE_URL`), two different values: local `.env` → dev,
 Three official Cardmarket JSON files, joined on `id_product`:
 
 ```text
-products_singles_6.json       (catalog, twice/month)
-products_nonsingles_6.json    (catalog, twice/month)
+products_singles_6.json       (catalog, weekly — every Friday)
+products_nonsingles_6.json    (catalog, weekly — every Friday)
 price_guide_6.json            (full daily price guide, daily)
 ```
+
+Changed from an original twice-monthly (1st/15th) plan to weekly during implementation — a genuine decision change, not an error fix (see `DECISIONS.md` §11 in the code repository, and `01`/`04`/`05`/`07`).
 
 Price guide holo fields use hyphens and must be normalized on load:
 
@@ -126,6 +129,9 @@ pokemon-cardmarket-bi/
 │   ├── collection/              CSV/Excel import, staging, matching
 │   ├── analytics/               valuation, signal generation
 │   └── utils/                  date/file-naming/logging/FTP/JSON/validation helpers
+│                                (ftp_client.py already extracted here — connect_ftp,
+│                                list_remote_filenames, upload_to_ftp — shared by both
+│                                ingestion scripts; see DECISIONS.md §12)
 │
 ├── tests/                      unit tests: normalization, validation, filename/rerun logic, valuation, matching
 │
@@ -165,22 +171,30 @@ logs/                           local run logs when scripts are run manually
 ### `.env.example` keys
 
 ```text
-CARDMARKET_PRICE_GUIDE_URL=
+CARDMARKET_PRICE_GUIDE_URL=       # now has a real default in config.py (DECISIONS.md §9);
+                                   # still overridable via env var/secret
 CARDMARKET_PRODUCTS_SINGLES_URL=
 CARDMARKET_PRODUCTS_NONSINGLES_URL=
 
 FTP_HOST=
 FTP_USER=
-FTP_REMOTE_PATH=
+FTP_PASS=
+FTP_REMOTE_DIR=
 
 DATABASE_URL=              # pooled (Supavisor, transaction mode). LOCAL .env → dev project.
                             # GitHub Actions secret of the same name → prod project. Never mixed up.
 DATABASE_URL_BACKUP=       # Session Pooler string, for manual pg_dump backups of prod
 
 PIPELINE_TIMEZONE=Europe/Vienna
+
+# Optional — pipeline success/failure notifications (DECISIONS.md §10). If
+# either is unset, notify_telegram() logs and returns; it never raises and
+# never blocks or fails the archiving run.
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 ```
 
-`FTP_PASSWORD` also needed as a GitHub Actions **secret** (not in `.env.example`, per `07`).
+**Corrected 2026-07-15:** this block previously used `FTP_REMOTE_PATH` and omitted the FTP password variable entirely. The real, already-provisioned GitHub Actions secrets and local env var names are **`FTP_PASS`/`FTP_REMOTE_DIR`** (see `DECISIONS.md` §7 in the code repository, and `06-github-repository-structure.md` v0.6). Both are now shown directly in `.env.example`/secrets above, rather than `FTP_PASSWORD` being described as a secret-only addition.
 
 ---
 
@@ -345,7 +359,7 @@ src/config or src/utils, shared by both workflows, never computed ad hoc.
 
 **Product lifecycle:** `is_active_in_catalog=false` the instant a product is missing from a fresh catalog file — no grace period. Never deleted. Historical `price_snapshots`/`collection_items` referencing an inactive product stay valid and visible in BI views.
 
-**No strict FK `price_snapshots.id_product → products.id_product`:** catalogs refresh twice/month, prices daily, so new products can appear in prices before catalog. Handled via indexed logical relationship + data quality warnings, not a hard constraint. Same reasoning underlies `waiting_for_product` in staging.
+**No strict FK `price_snapshots.id_product → products.id_product`:** catalogs refresh weekly, prices daily, so new products can appear in prices before catalog. Handled via indexed logical relationship + data quality warnings, not a hard constraint. Same reasoning underlies `waiting_for_product` in staging.
 
 **Valuation formula (used everywhere estimated value appears — `vw_latest_prices`, collection views, `collection_gain`/`loss` signals):**
 ```text
@@ -383,9 +397,11 @@ collection_items:         only ready_to_import staging rows import; no
 
 ```text
 1. Daily price guide pipeline       — scheduled, daily
-2. Twice-monthly catalog pipeline   — scheduled, 1st + 15th of month
+2. Product catalog pipeline         — scheduled, weekly (every Friday)
 3. Manual collection import        — user-triggered, not scheduled
 ```
+
+(Catalog cadence changed from an original twice-monthly (1st/15th) plan to weekly during implementation — see `DECISIONS.md` §11.)
 
 **Load order when both scheduled pipelines run same day:** catalog pipeline **before** daily price pipeline (increases chance new products are known before their prices load) — but the daily pipeline must still run independently and successfully even if catalog didn't run or failed that day.
 
@@ -403,7 +419,7 @@ collection_items:         only ready_to_import staging rows import; no
 10. Expose via BI views
 ```
 
-### Twice-monthly catalog pipeline — steps
+### Product catalog pipeline (weekly, Friday) — steps
 ```text
 1. Start scheduled run
 2. Download products_singles_6.json + products_nonsingles_6.json
@@ -424,7 +440,7 @@ collection_items:         only ready_to_import staging rows import; no
 
 **If one catalog file succeeds and the other fails:** do **not** update `products` at all; fail the whole catalog run. A partially-unified catalog is considered worse than a stale-but-consistent one.
 
-**If the catalog pipeline fails/misses entirely:** existing `products` table stays in use as-is (stale, not blocked). Daily price pipeline continues normally against it. New unmatched `id_product`s reported as warnings like any other day. No automatic retry — manual rerun or wait for next scheduled date (1st/15th). This accepts up to ~2 weeks of staleness by design.
+**If the catalog pipeline fails/misses entirely:** existing `products` table stays in use as-is (stale, not blocked). Daily price pipeline continues normally against it. New unmatched `id_product`s reported as warnings like any other day. No automatic retry — manual rerun or wait for the next scheduled Friday. This accepts up to ~1 week of staleness by design (down from ~2 weeks under the original twice-monthly plan).
 
 ### Failure vs. Warning — authoritative thresholds (defined once in `04`, mirrored elsewhere)
 
@@ -476,13 +492,15 @@ Reprocessing reads raw files; never mutates them.
 
 **Folder structure (flat, dated filenames, no year/month partitioning in MVP):**
 ```text
-/raw/cardmarket/pokemon/
+{FTP_REMOTE_DIR}/
   price_guides/
     price_guide_6_YYYY-MM-DD.json
   product_catalogs/
     products_singles_6_YYYY-MM-DD.json
     products_nonsingles_6_YYYY-MM-DD.json
 ```
+
+**Corrected 2026-07-15:** the FTP account root (`FTP_REMOTE_DIR`) has `price_guides/` and `product_catalogs/` directly under it — no `/raw/cardmarket/pokemon/...` nesting. That nested path was the original design, written before the FTP account existed, and was never actually built (see `DECISIONS.md` §3 in the code repository, and `05-raw-archive-strategy.md` v0.3). Note: the *local* working copy at `data/raw/cardmarket/pokemon/...` (§4 above, per `11-local-environment-setup.md`) genuinely does keep that nested structure — only the FTP-side archive layout was flattened.
 
 **Immutability + rerun rule (the core resolved design decision):**
 ```text
@@ -510,7 +528,7 @@ Two scheduled workflows only; collection import is **not** automated.
 
 ```text
 .github/workflows/daily-price-guide.yml     — daily
-.github/workflows/product-catalog.yml       — twice/month (1st, 15th)
+.github/workflows/product-catalog.yml       — weekly (every Friday)
 ```
 
 Both:
@@ -520,11 +538,16 @@ Both:
 - load only from the canonical file for that date
 - support manual triggering (manual rerun for an existing date → rerun-suffixed copy, same as a scheduled rerun)
 - run data quality checks with the same failure/warning thresholds as §7
+- send an optional Telegram success/failure notification (`DECISIONS.md` §10) — never blocks or fails the run if unset or unreachable; the pipeline's exit code remains the actual source of truth for success/failure, not the notification
 
 **Secrets (GitHub Actions secrets, never in `.env.example` or workflow files):**
 ```text
-FTP_HOST, FTP_USER, FTP_PASSWORD, FTP_REMOTE_PATH
+FTP_HOST, FTP_USER, FTP_PASS, FTP_REMOTE_DIR   (renamed from FTP_PASSWORD/
+                                                 FTP_REMOTE_PATH — see DECISIONS.md §7)
 DATABASE_URL   (Supabase pooled connection string, service credential)
+
+# Optional (DECISIONS.md §10) — skips notification, doesn't fail the run, if unset
+TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 ```
 
 **Non-secret config:**
@@ -763,6 +786,41 @@ No ML / prediction — signals are simple explainable observations only
   check was stale/inconsistent with 07's resolution — fixed to match 07:
   read the previous run's count directly from the database, no dedicated
   table in MVP
+✓ Product catalog cadence changed from twice-monthly (1st/15th) to weekly
+  (every Friday) during implementation — a genuine decision change, not an
+  error fix (DECISIONS.md §11); staleness window tightened from ~2 weeks
+  to ~1 week accordingly
+✓ FTP env var names corrected from FTP_PASSWORD/FTP_REMOTE_PATH (as
+  originally documented) to the real, already-provisioned FTP_PASS/
+  FTP_REMOTE_DIR (DECISIONS.md §7) — a doc/reality naming gap, not a
+  renaming of already-working secrets
+✓ Raw archive FTP folder layout corrected from the originally-designed
+  nested /raw/cardmarket/pokemon/... path to the real flat layout
+  ({FTP_REMOTE_DIR}/price_guides/, .../product_catalogs/) once the FTP
+  account was actually provisioned (DECISIONS.md §3) — the nested path was
+  never built. Note this is FTP-side only; the local working copy at
+  data/raw/cardmarket/pokemon/... genuinely stays nested (11)
+✓ Telegram pipeline notifications added (notify_telegram) — optional,
+  non-blocking config (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID default to None
+  and skip silently if unset), fired on both success and failure; exit
+  code remains the actual success/failure signal, not the notification
+  (DECISIONS.md §10). Item count in the notification is a "TBD" placeholder
+  pending confirmation of price_guide_6.json's root JSON structure
+✓ CARDMARKET_PRICE_GUIDE_URL given a real default in config.py, still
+  override-able via env/secret — safe because a wrong/missing URL just
+  fails loudly at the HTTP step, unlike PIPELINE_TIMEZONE which has no
+  fallback on purpose (DECISIONS.md §9)
+✓ Shared FTP helpers (connect_ftp, list_remote_filenames, upload_to_ftp)
+  extracted into src/utils/ftp_client.py once the product catalog script
+  was equally proven — previously duplicated verbatim between the two
+  ingestion scripts as deliberate short-term debt (DECISIONS.md §11
+  Decision C, resolved in §12); no existing tests needed changes, since
+  both patch the names at the ingestion module's namespace, not
+  ftp_client's
+✓ Phase 0a (daily price guide + weekly product catalog archiving)
+  confirmed implemented as of 2026-07-15 — both ingestion scripts built,
+  tested, and running against the real FTP account; Phase 0b (validate/
+  transform/load) not yet started
 ```
 
 ---
