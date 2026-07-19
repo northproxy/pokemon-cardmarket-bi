@@ -18,6 +18,7 @@ Last updated: 2026-07-14
 | 0.4 | 2026-07-05 | Confirmed a two-project Supabase split (dev + prod, both free tier) rather than a single shared project; added manual `pg_dump` backup guidance for the prod project, since the free tier has no automated backups; added `check_invalid_collection_items` as a sixth data quality check |
 | 0.5 | 2026-07-12 | Two implementation-time corrections, both logged in `DECISIONS.md` in the code repository: (1) product catalog cadence changed from twice-monthly (1st/15th) to weekly (every Friday) — a genuine decision change, not an error fix; (2) the raw archive folder structure corrected from the originally-designed nested `/raw/cardmarket/pokemon/...` path to the actual, already-provisioned flat FTP layout (`price_guides/`, `product_catalogs/` directly under the FTP root) — this one *is* a doc fix, since the nested path was never actually built. |
 | 0.6 | 2026-07-14 | Renamed all field-name references from camelCase to `snake_case` (e.g. `idProduct` → `id_product`, `snapshotDate` → `snapshot_date`), matching the project-wide database naming decision in `02-data-model.md` v0.5 / `03-data-dictionary.md` v0.5. This document only references fields by name rather than defining them, so no schema content changed — just the spelling of the names used. |
+| 0.7 | 2026-07-19 | Corrected source_created_at handling: confirmed via a real price_guide_6.json sample that Cardmarket provides its own root-level createdAt timestamp. source_created_at is now populated from that value (parsed once per file, applied to every row), not the pipeline's download time as previously assumed. See DECISIONS.md in the code repository for the implementation-time record of this correction. |
 
 ## Overview
 
@@ -462,11 +463,7 @@ price_snapshots.snapshot_date
 
 This makes the raw archive and database rows easy to connect.
 
-If reliable source metadata is available later, it can be stored separately as:
-
-```text
-source_created_at
-```
+Cardmarket's price_guide_6.json includes its own root-level `createdAt` timestamp (confirmed via a real sample file, 2026-07-19 -- see `DECISIONS.md` in the code repository). This is stored as `source_created_at` on every row loaded from that file, replacing the earlier assumption that no source-provided timestamp existed and that this field would hold the pipeline's download time instead.
 
 ## Price Snapshot Load Logic
 

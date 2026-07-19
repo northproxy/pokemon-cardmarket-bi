@@ -17,6 +17,7 @@ Last updated: 2026-07-14
 | 0.3 | 2026-07-04 | Extended `analytics_signals` schema with `signal_strength`, `lookback_days`, `reference_value`, `current_value`; keyed collection-level signals on `collection_item_id`; deferred `sealed_growth` to Later Signal Types, based on architecture review of `09-analytics-signal-definitions.md` |
 | 0.4 | 2026-07-04 | Added missing `storage_location`/`personal_note` fields to `collection_import_staging` (previously documented as import columns in `08-collection-import-flow.md` but absent from this table's schema); clarified `source_created_at` as an alias for download time in the MVP; confirmed Postgres/Supabase as the target database, so the partial unique index on `watchlist` is a firm MVP requirement rather than a conditional fallback |
 | 0.5 | 2026-07-14 | Renamed every field in every table from camelCase to `snake_case` (e.g. `idProduct` → `id_product`, `isActiveInCatalog` → `is_active_in_catalog`), matching Postgres's native lowercase-folding behavior and avoiding a project-wide need to quote every identifier. This was a genuine decision, made explicitly rather than discovered as a doc/reality mismatch — at the time of this rewrite, the real `sql/schema/001`–`006` files were still unbuilt placeholders, so this rewrite defines the convention the first real implementation should follow, rather than correcting a live table. CSV/Excel import column headers (`08-collection-import-flow.md`) are explicitly **not** part of this rename — see that document's own naming note. |
+| 0.6 | 2026-07-19 | Corrected source_created_at: a real price_guide_6.json sample confirmed Cardmarket provides a root-level createdAt timestamp, contradicting the v0.4 assumption (in 03-data-dictionary.md) that no source timestamp exists. source_created_at now stores that value, not the pipeline's download time. See 03 v0.6 and 04 v0.7 for the same correction. |  
 
 ## Naming Convention
 
@@ -268,10 +269,10 @@ created_at
 ```text
 price_snapshots
 
-snapshot_date          date, not null
-source_created_at       timestamp, nullable  -- alias for download time (MVP)
-id_product             integer / bigint, not null
-id_category            integer / bigint, nullable
+snapshot_date         date, not null
+source_created_at     timestamp, nullable  -- Cardmarket's own createdAt from the price guide file root
+id_product            integer / bigint, not null
+id_category           integer / bigint, nullable
 avg                   decimal, nullable
 low                   decimal, nullable
 trend                 decimal, nullable
@@ -284,7 +285,7 @@ trend_holo            decimal, nullable
 avg1_holo             decimal, nullable
 avg7_holo             decimal, nullable
 avg30_holo            decimal, nullable
-created_at             timestamp, not null
+created_at            timestamp, not null
 ```
 
 ## Primary Key

@@ -17,6 +17,7 @@ Last updated: 2026-07-14
 | 0.3 | 2026-07-04 | Extended `analytics_signals` with `signal_strength`, `lookback_days`, `reference_value`, `current_value`; clarified `collection_item_id` keying for collection-level signals; deferred `sealed_growth` to Later Signal Types, based on architecture review of `09-analytics-signal-definitions.md` |
 | 0.4 | 2026-07-04 | Added missing `storage_location`/`personal_note` fields to `collection_import_staging`; clarified `source_created_at` as an alias for download time in the MVP; specified `match_confidence = 0.00` (not `null`) as the value to store when matching was attempted but found no confident match, reserving `null` for rows the matcher hasn't processed yet |
 | 0.5 | 2026-07-14 | Renamed every field in every table from camelCase to `snake_case` (e.g. `idProduct` → `id_product`), settling the convention this document's own "Naming Conventions" section already claimed (`snake_case`) but the field lists throughout the rest of the document hadn't actually followed until now — that mismatch predates this rewrite and is fixed here. Rewrote the Naming Conventions section itself for clarity. CSV/Excel import column headers (`08-collection-import-flow.md`) explicitly keep camelCase and are not affected. |
+| 0.6 | 2026-07-19 | Corrected source_created_at field description: a real sample price_guide_6.json confirmed a root-level createdAt timestamp exists, contradicting the v0.4 claim that Cardmarket source files carry no usable file-level timestamp. source_created_at now stores Cardmarket's own value, parsed from the file, not the pipeline's download time. Source column changed from System to Cardmarket accordingly. |
 
 ## Overview
 
@@ -168,7 +169,7 @@ This table creates historical price data over time.
 | Field | Type | Nullable | Source | Description |
 |---|---|---|---|---|
 | `snapshot_date` | date | No | Derived | Date assigned to the daily price snapshot: the pipeline run date in the Europe/Vienna timezone. This rule applies to every run, including manual reruns and backfills — there is no separate rule for exceptional cases. |
-| `source_created_at` | timestamp | Yes | System | Alias for the pipeline's download timestamp for this file. Cardmarket's source files don't carry a usable file-level timestamp of their own, so in the MVP this field always reflects when the project downloaded the file, not a source-provided value. |
+| `source_created_at` | timestamp | Yes | Cardmarket | Cardmarket's own `createdAt` timestamp from the root of `price_guide_6.json` (e.g. `2026-06-29T02:55:18+0200`), confirmed present via a real sample file on 2026-07-19. One value applies to every record loaded from that file/pipeline run. This corrects the earlier v0.4 assumption that no source-provided timestamp existed -- that assumption was made without a real sample and was incorrect. |
 | `id_product` | integer / bigint | No | Cardmarket | Product ID from the price guide. Connects logically to `products.id_product`. |
 | `id_category` | integer / bigint | Yes | Cardmarket | Category ID as reported in this specific daily price guide snapshot (source-observed, point-in-time). See "id_category Reconciliation" below. |
 | `avg` | decimal | Yes | Cardmarket | Average price value from the price guide. |

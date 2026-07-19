@@ -251,3 +251,26 @@ therefore transparent to every test written before it.
 Added `tests/test_ftp_client.py` to test the extracted module directly
 (connection setup, empty-listing error handling, upload path construction)
 rather than only indirectly through the two scripts that use it.
+
+## 13. `source_created_at` corrected to use Cardmarket's own `createdAt`, not download time
+
+`03-data-dictionary.md` §4 (v0.4) stated Cardmarket's source files "don't
+carry a usable file-level timestamp of their own," so `source_created_at`
+was implemented as an alias for the pipeline's download time.
+
+A real `price_guide_6.json` sample (checked 2026-07-19) showed this
+assumption was wrong:
+
+```json
+{"version":1,"createdAt":"2026-06-29T02:55:18+0200","priceGuides":[...]}
+```
+
+**Decision:** `source_created_at` now stores Cardmarket's own root-level
+`createdAt` value, parsed once per file and applied to every row loaded
+from it (`src/transform/price_guide.py::extract_source_created_at`,
+used by default in `transform_price_guide`). Falls back to `None` if the
+field is ever missing or unparseable, rather than failing the pipeline
+over one nullable field.
+
+This is a genuine correction of a wrong factual premise, not a design
+change -- `02`, `03`, and `04` are updated accordingly (v0.6, v0.6, v0.7).
