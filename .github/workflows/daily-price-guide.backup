@@ -1,4 +1,4 @@
-name: Daily Price Guide py
+name: Daily Price Guide
 
 on:
   schedule:
@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run daily price guide pipeline (download, archive, validate, load, quality checks)
+      - name: Run daily price guide download
         env:
           PIPELINE_TIMEZONE: Europe/Vienna
           CARDMARKET_PRICE_GUIDE_URL: https://downloads.s3.cardmarket.com/productCatalog/priceGuide/price_guide_6.json
@@ -35,15 +35,8 @@ jobs:
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASS: ${{ secrets.FTP_PASS }}
           FTP_REMOTE_DIR: ${{ secrets.FTP_REMOTE_DIR }}
-          # New for Phase 0b — must be the PROD Supabase project's pooled
-          # (Supavisor, transaction mode) connection string, a
-          # database-role/service credential, not the anon key. See
-          # docs/04 "Database Platform", docs/06 .env.example notes,
-          # docs/11 §4. This secret's value must differ from your local
-          # .env's DATABASE_URL, which points at dev instead.
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           # Optional — see DECISIONS.md §10. If either secret is unset,
           # notify_telegram() skips silently rather than failing the run.
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python -m src.ingestion.run_daily_price_guide_pipeline 
+        run: python -m src.ingestion.download_price_guide

@@ -1,5 +1,11 @@
 # Core
 python-dotenv>=1.0
+
+# New dependency for Phase 0b (src/load/), added 2026-07-19.
+# psycopg3, chosen over psycopg2 (legacy/maintenance-mode) and SQLAlchemy
+# (an ORM would fight this project's stated "plain SQL, no migration
+# tool" philosophy -- see docs/06 "Why Not Put Everything in One Script?").
+# [binary] avoids requiring local Postgres build tools/headers.
 psycopg[binary]>=3.1
 
 # Ingestion
